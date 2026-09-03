@@ -138,7 +138,7 @@ export function MondaySyncSection() {
           <code className="rounded bg-white px-1">Authorization</code> header.
           On Vercel, add this to your <code className="rounded bg-white px-1">vercel.json</code>:
         </p>
-        <pre className="mt-2 overflow-x-auto rounded bg-white p-3 text-xs">
+        <pre className="mt-2 overflow-x-auto rounded bg-white p-3 text-xs leading-relaxed">
 {`{
   "crons": [{
     "path": "/api/admin/monday-sync",
@@ -147,7 +147,10 @@ export function MondaySyncSection() {
 }`}
         </pre>
         <p className="mt-1 text-xs text-brand-darkBlue/50">
-          The schedule above runs nightly at 2 AM UTC. Adjust the cron expression to your preferred time.
+          Runs nightly at 2 AM UTC. Adjust to your preferred time using{" "}
+          <a href="https://crontab.guru" target="_blank" rel="noreferrer" className="underline">
+            crontab.guru
+          </a>.
         </p>
       </div>
     </section>
