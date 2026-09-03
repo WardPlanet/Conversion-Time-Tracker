@@ -8,10 +8,14 @@
  * The integration auto-creates three Groups on the board on first sync:
  *   "Time Entries", "Expenses", "Timesheets"
  *
- * Each record is created as a Monday item with a descriptive name. All
- * detail is written as a text update on the item so data is immediately
- * visible without needing column configuration. Column mapping can be
- * added later once the board structure is finalised.
+ * Column mapping is done by title (case-insensitive) so it works with any
+ * board setup — columns that don't exist are silently skipped. The full
+ * record detail is also written as a text update on every item so nothing
+ * is ever lost even if a column isn't mapped.
+ *
+ * Supported column types: text, long_text, date, numbers, color (status).
+ * People columns (Trainer) require Monday user IDs — they are skipped and
+ * the trainer name appears in the item name and update body instead.
  */
 
 const MONDAY_API_URL = "https://api.monday.com/v2";
@@ -48,6 +52,67 @@ async function mondayRequest(
   return json;
 }
 
+// ── Column mapping ─────────────────────────────────────────────────────────
+
+interface BoardColumn {
+  id: string;
+  title: string;
+  type: string;
+}
+
+async function getBoardColumns(boardId: string): Promise<BoardColumn[]> {
+  const result = await mondayRequest(
+    `query { boards(ids: [${boardId}]) { columns { id title type } } }`
+  );
+  const data = result.data as { boards?: { columns: BoardColumn[] }[] };
+  return data?.boards?.[0]?.columns ?? [];
+}
+
+type FieldValue =
+  | { kind: "text"; value: string }
+  | { kind: "date"; value: string }   // "YYYY-MM-DD"
+  | { kind: "number"; value: number }
+  | { kind: "status"; label: string };
+
+/**
+ * Builds the column_values JSON string for a Monday create_item mutation.
+ * Matches columns by title (case-insensitive). Columns that aren't found or
+ * whose type doesn't match the field kind are silently skipped.
+ */
+function buildColumnValues(
+  columns: BoardColumn[],
+  fields: Record<string, FieldValue>
+): string {
+  const byTitle = new Map(columns.map((c) => [c.title.toLowerCase().trim(), c]));
+  const out: Record<string, unknown> = {};
+
+  for (const [title, field] of Object.entries(fields)) {
+    const col = byTitle.get(title.toLowerCase().trim());
+    if (!col || col.type === "name") continue;
+
+    switch (field.kind) {
+      case "date":
+        if (col.type === "date") out[col.id] = { date: field.value };
+        break;
+      case "number":
+        if (col.type === "numbers") out[col.id] = String(field.value);
+        break;
+      case "status":
+        // Monday status columns may be typed "color", "status", or other variants
+        // depending on board/API version — set the value unconditionally once the
+        // column is located by title.
+        out[col.id] = { label: field.label };
+        break;
+      case "text":
+        if (col.type === "long_text") out[col.id] = { text: field.value };
+        else out[col.id] = field.value;
+        break;
+    }
+  }
+
+  return JSON.stringify(out);
+}
+
 // ── Group management ───────────────────────────────────────────────────────
 
 const GROUP_TITLES = {
@@ -56,7 +121,6 @@ const GROUP_TITLES = {
   timesheets: "Timesheets",
 } as const;
 
-/** Returns the group ID for a given title, creating the group if it doesn't exist. */
 async function getOrCreateGroup(boardId: string, title: string): Promise<string> {
   const listResult = await mondayRequest(
     `query { boards(ids: [${boardId}]) { groups { id title } } }`
@@ -80,14 +144,16 @@ async function createItemWithUpdate(
   boardId: string,
   groupId: string,
   itemName: string,
-  updateBody: string
+  updateBody: string,
+  columnValues: string
 ): Promise<void> {
   const itemResult = await mondayRequest(
     `mutation {
       create_item(
         board_id: ${boardId},
         group_id: ${JSON.stringify(groupId)},
-        item_name: ${JSON.stringify(itemName)}
+        item_name: ${JSON.stringify(itemName)},
+        column_values: ${JSON.stringify(columnValues)}
       ) { id }
     }`
   );
@@ -173,12 +239,19 @@ export async function syncAll(
 
   const boardId = process.env.MONDAY_TIME_TRACKER_BOARD_ID!;
 
-  // Ensure all three groups exist before syncing
-  const [teGroupId, expGroupId, tsGroupId] = await Promise.all([
+  // Fetch board columns and ensure groups exist in parallel
+  const [columns, teGroupId, expGroupId, tsGroupId] = await Promise.all([
+    getBoardColumns(boardId),
     getOrCreateGroup(boardId, GROUP_TITLES.timeEntries),
     getOrCreateGroup(boardId, GROUP_TITLES.expenses),
     getOrCreateGroup(boardId, GROUP_TITLES.timesheets),
   ]);
+
+  // Debug: log detected columns to server console so mismatches are visible
+  console.log(
+    "[Monday sync] Board columns:",
+    columns.map((c) => `${c.title} (${c.type})`).join(", ")
+  );
 
   let teSync = 0, teErr = 0;
   let expSync = 0, expErr = 0;
@@ -186,6 +259,16 @@ export async function syncAll(
 
   for (const row of timeEntries) {
     try {
+      const colValues = buildColumnValues(columns, {
+        // User mapping: Date→Entry Date, Project→Client, Office→Location, Location→OID, Note→Task Description, Hours→Time Spent
+        "entry date":         { kind: "date",   value: row.date },
+        "client":             { kind: "text",   value: row.project },
+        "location":           { kind: "text",   value: row.office },
+        "oid":                { kind: "text",   value: row.location },
+        "task description":   { kind: "text",   value: row.note },
+        "time spent (hours)": { kind: "number", value: row.hours },
+        "billing":            { kind: "status", label: row.billable ? "Billable" : "Non-billable" },
+      });
       await createItemWithUpdate(
         boardId,
         teGroupId,
@@ -201,7 +284,8 @@ export async function syncAll(
           `Billable: ${row.billable ? "Yes" : "No"}`,
           `Week Status: ${row.weekStatus}`,
           `Note: ${row.note}`,
-        ].join("\n")
+        ].join("\n"),
+        colValues
       );
       teSync++;
     } catch {
@@ -211,6 +295,13 @@ export async function syncAll(
 
   for (const row of expenses) {
     try {
+      const colValues = buildColumnValues(columns, {
+        // User mapping: Date→Entry Date, Project→Client, Amount→Expense Amount, Description→Task Description
+        "entry date":       { kind: "date",   value: row.date },
+        "client":           { kind: "text",   value: row.project },
+        "expense amount":   { kind: "number", value: row.amount },
+        "task description": { kind: "text",   value: row.description },
+      });
       await createItemWithUpdate(
         boardId,
         expGroupId,
@@ -226,7 +317,8 @@ export async function syncAll(
           `Description: ${row.description}`,
         ]
           .filter(Boolean)
-          .join("\n")
+          .join("\n"),
+        colValues
       );
       expSync++;
     } catch {
@@ -236,6 +328,11 @@ export async function syncAll(
 
   for (const row of timesheets) {
     try {
+      const colValues = buildColumnValues(columns, {
+        "entry date":         { kind: "date",   value: row.weekStart },
+        "time spent (hours)": { kind: "number", value: row.totalHours },
+        "status":             { kind: "status", label: row.status },
+      });
       await createItemWithUpdate(
         boardId,
         tsGroupId,
@@ -248,7 +345,8 @@ export async function syncAll(
           row.submittedAt ? `Submitted: ${row.submittedAt.split("T")[0]}` : "",
         ]
           .filter(Boolean)
-          .join("\n")
+          .join("\n"),
+        colValues
       );
       tsSync++;
     } catch {

@@ -244,6 +244,288 @@ function seedOffices(): Office[] {
   ];
 }
 
+function seedTaskEntries(): TaskEntry[] {
+  // task IDs: task-p{projectIndex+1}-t{trainerIndex+1}-{taskIndex+1}
+  // proj-1 (cloud9), proj-2 (denticon), proj-3 (denticon), proj-4 (cloud9)
+  // jsmith = t1, rlee = t2
+  return [
+    // Jordan Smith — Project #1 (cloud9), Denver office
+    {
+      id: "te-1",
+      trainerId: "user-jsmith",
+      date: "2026-08-25",
+      projectId: "proj-1",
+      office: "office-1a",
+      taskId: "task-p1-t1-1",
+      note: "Initial onboarding session, covered scheduling module.",
+      hours: 4,
+      location: "Denver Main Office",
+      createdAt: "2026-08-25T16:00:00.000Z",
+    },
+    {
+      id: "te-2",
+      trainerId: "user-jsmith",
+      date: "2026-08-26",
+      projectId: "proj-1",
+      office: "office-1a",
+      taskId: "task-p1-t1-5",
+      note: "Virtual follow-up on appointment types setup.",
+      hours: 2,
+      location: "Denver Main Office",
+      createdAt: "2026-08-26T15:00:00.000Z",
+    },
+    {
+      id: "te-3",
+      trainerId: "user-jsmith",
+      date: "2026-08-27",
+      projectId: "proj-2",
+      office: "office-2a",
+      taskId: "task-p2-t1-1",
+      note: "On-site training for imaging module — all staff attended.",
+      hours: 6,
+      location: "Atlanta Peachtree Location",
+      createdAt: "2026-08-27T17:00:00.000Z",
+    },
+    {
+      id: "te-4",
+      trainerId: "user-jsmith",
+      date: "2026-08-28",
+      projectId: "proj-2",
+      office: "office-2a",
+      taskId: "task-p2-t1-3",
+      note: "Addressed billing workflow questions from front desk.",
+      hours: 3,
+      location: "Atlanta Peachtree Location",
+      createdAt: "2026-08-28T15:00:00.000Z",
+    },
+    {
+      id: "te-5",
+      trainerId: "user-jsmith",
+      date: "2026-09-01",
+      projectId: "proj-1",
+      office: "office-1b",
+      taskId: "task-p1-t1-3",
+      note: "Chicago location kickoff — walked through provider setup.",
+      hours: 5,
+      location: "Chicago Lincoln Park Office",
+      createdAt: "2026-09-01T18:00:00.000Z",
+    },
+    // Riley Lee — Project #2 (denticon), Atlanta office
+    {
+      id: "te-6",
+      trainerId: "user-rlee",
+      date: "2026-08-25",
+      projectId: "proj-2",
+      office: "office-2a",
+      taskId: "task-p2-t2-1",
+      note: "Day 1 on-site training, covered patient check-in flow.",
+      hours: 7,
+      location: "Atlanta Buckhead Clinic",
+      createdAt: "2026-08-25T17:30:00.000Z",
+    },
+    {
+      id: "te-7",
+      trainerId: "user-rlee",
+      date: "2026-08-26",
+      projectId: "proj-2",
+      office: "office-2a",
+      taskId: "task-p2-t2-2",
+      note: "Virtual support call — helped with appointment reminders config.",
+      hours: 1.5,
+      location: "Atlanta Buckhead Clinic",
+      createdAt: "2026-08-26T14:00:00.000Z",
+    },
+    {
+      id: "te-8",
+      trainerId: "user-rlee",
+      date: "2026-08-28",
+      projectId: "proj-3",
+      office: "office-3a",
+      taskId: "task-p3-t2-1",
+      note: "Remote refresher session — walkthrough of ledger corrections.",
+      hours: 2,
+      location: "Remote — Zoom",
+      createdAt: "2026-08-28T16:00:00.000Z",
+    },
+    {
+      id: "te-9",
+      trainerId: "user-rlee",
+      date: "2026-09-02",
+      projectId: "proj-2",
+      office: "office-2a",
+      taskId: "task-p2-t2-3",
+      note: "On-site support for end-of-month close procedures.",
+      hours: 4,
+      location: "Atlanta Buckhead Clinic",
+      createdAt: "2026-09-02T17:00:00.000Z",
+    },
+    {
+      id: "te-10",
+      trainerId: "user-rlee",
+      date: "2026-09-03",
+      projectId: "proj-4",
+      office: "office-4a",
+      taskId: "task-p4-t2-5",
+      note: "Virtual training session on treatment plan presentation.",
+      hours: 1.5,
+      location: "Remote — Teams",
+      createdAt: "2026-09-03T15:00:00.000Z",
+    },
+    // Non-billable entries
+    {
+      id: "te-11",
+      trainerId: "user-jsmith",
+      date: "2026-08-26",
+      projectId: "proj-1",
+      office: "office-1a",
+      taskId: "task-p1-t1-2", // Virtual Customer Support (Non Billable)
+      note: "Follow-up support call, no charge to client.",
+      hours: 1,
+      location: "Denver Main Office",
+      createdAt: "2026-08-26T16:00:00.000Z",
+    },
+    {
+      id: "te-12",
+      trainerId: "user-jsmith",
+      date: "2026-08-27",
+      projectId: "proj-2",
+      office: "office-2a",
+      taskId: "task-p2-t1-4", // On-Site Customer Support (Non Billable)
+      note: "Courtesy on-site visit to address post-training questions.",
+      hours: 2,
+      location: "Atlanta Peachtree Location",
+      createdAt: "2026-08-27T18:00:00.000Z",
+    },
+    {
+      id: "te-13",
+      trainerId: "user-rlee",
+      date: "2026-08-29",
+      projectId: "proj-2",
+      office: "office-2a",
+      taskId: "task-p2-t2-4", // On-Site Customer Support (Non Billable)
+      note: "Non-billable on-site check-in after go-live.",
+      hours: 1.5,
+      location: "Atlanta Buckhead Clinic",
+      createdAt: "2026-08-29T14:00:00.000Z",
+    },
+  ];
+}
+
+function seedExpenses(): Expense[] {
+  return [
+    {
+      id: "exp-1",
+      trainerId: "user-jsmith",
+      projectId: "proj-1",
+      date: "2026-08-25",
+      category: "Travel",
+      amount: 312.50,
+      description: "Round-trip flight DEN→DEN for Project #1 Denver kickoff.",
+      status: "approved",
+      createdAt: "2026-08-25T20:00:00.000Z",
+      reviewedAt: "2026-08-26T09:00:00.000Z",
+      reviewedByAdminId: "user-admin",
+    },
+    {
+      id: "exp-2",
+      trainerId: "user-jsmith",
+      projectId: "proj-2",
+      date: "2026-08-27",
+      category: "Meals",
+      amount: 54.80,
+      description: "Team lunch with client staff during on-site training day.",
+      status: "pending",
+      createdAt: "2026-08-27T19:00:00.000Z",
+    },
+    {
+      id: "exp-3",
+      trainerId: "user-jsmith",
+      projectId: "proj-1",
+      date: "2026-09-01",
+      category: "Travel",
+      amount: 189.00,
+      description: "Amtrak to Chicago for Project #1 second location training.",
+      status: "pending",
+      createdAt: "2026-09-01T20:00:00.000Z",
+    },
+    {
+      id: "exp-4",
+      trainerId: "user-rlee",
+      projectId: "proj-2",
+      date: "2026-08-25",
+      category: "Mileage",
+      amount: 67.20,
+      description: "160 miles driven to Atlanta Buckhead clinic @ $0.42/mi.",
+      status: "approved",
+      createdAt: "2026-08-25T21:00:00.000Z",
+      reviewedAt: "2026-08-26T10:00:00.000Z",
+      reviewedByAdminId: "user-admin",
+    },
+    {
+      id: "exp-5",
+      trainerId: "user-rlee",
+      projectId: "proj-2",
+      date: "2026-09-02",
+      category: "Supplies",
+      amount: 28.45,
+      description: "Printed training handouts for end-of-month session.",
+      status: "pending",
+      createdAt: "2026-09-02T18:00:00.000Z",
+    },
+  ];
+}
+
+function seedTimesheetSubmissions(): TimesheetSubmission[] {
+  return [
+    // Jordan Smith — week of 2026-08-24 (Mon): submitted and approved
+    {
+      id: "ts-1",
+      trainerId: "user-jsmith",
+      weekStartDate: "2026-08-24",
+      status: "approved",
+      submittedAt: "2026-08-28T17:00:00.000Z",
+      reviewedAt: "2026-08-29T09:00:00.000Z",
+      reviewedByAdminId: "user-admin",
+    },
+    // Riley Lee — week of 2026-08-24: submitted, pending review
+    {
+      id: "ts-2",
+      trainerId: "user-rlee",
+      weekStartDate: "2026-08-24",
+      status: "submitted",
+      submittedAt: "2026-08-28T18:30:00.000Z",
+    },
+    // Jordan Smith — week of 2026-08-31: draft (not yet submitted)
+    {
+      id: "ts-3",
+      trainerId: "user-jsmith",
+      weekStartDate: "2026-08-31",
+      status: "draft",
+    },
+  ];
+}
+
+function seedTimeClockEvents(): TimeClockEvent[] {
+  return [
+    // Jordan Smith — Mon 2026-08-25
+    { id: "tce-1", trainerId: "user-jsmith", type: "clock_in",    timestamp: "2026-08-25T08:00:00.000Z" },
+    { id: "tce-2", trainerId: "user-jsmith", type: "break_start", timestamp: "2026-08-25T12:00:00.000Z" },
+    { id: "tce-3", trainerId: "user-jsmith", type: "break_end",   timestamp: "2026-08-25T12:30:00.000Z" },
+    { id: "tce-4", trainerId: "user-jsmith", type: "clock_out",   timestamp: "2026-08-25T17:00:00.000Z" },
+    // Jordan Smith — Tue 2026-08-26
+    { id: "tce-5", trainerId: "user-jsmith", type: "clock_in",    timestamp: "2026-08-26T08:15:00.000Z" },
+    { id: "tce-6", trainerId: "user-jsmith", type: "clock_out",   timestamp: "2026-08-26T14:30:00.000Z" },
+    // Riley Lee — Mon 2026-08-25
+    { id: "tce-7",  trainerId: "user-rlee", type: "clock_in",    timestamp: "2026-08-25T07:45:00.000Z" },
+    { id: "tce-8",  trainerId: "user-rlee", type: "break_start", timestamp: "2026-08-25T12:00:00.000Z" },
+    { id: "tce-9",  trainerId: "user-rlee", type: "break_end",   timestamp: "2026-08-25T13:00:00.000Z" },
+    { id: "tce-10", trainerId: "user-rlee", type: "clock_out",   timestamp: "2026-08-25T17:30:00.000Z" },
+    // Riley Lee — Thu 2026-08-28
+    { id: "tce-11", trainerId: "user-rlee", type: "clock_in",    timestamp: "2026-08-28T09:00:00.000Z" },
+    { id: "tce-12", trainerId: "user-rlee", type: "clock_out",   timestamp: "2026-08-28T13:00:00.000Z" },
+  ];
+}
+
 /**
  * Reference implementation of {@link DataStore} backed by in-memory arrays.
  * Data resets whenever the server process restarts — expected until a real
@@ -255,18 +537,18 @@ export class MockDataStore implements DataStore {
   private projects: Project[] = seedProjects();
   private tasks: Task[] = seedTasks();
   private bookings: Booking[] = seedBookings();
-  private timeClockEvents: TimeClockEvent[] = [];
+  private timeClockEvents: TimeClockEvent[] = seedTimeClockEvents();
   private offices: Office[] = seedOffices();
-  private taskEntries: TaskEntry[] = [];
+  private taskEntries: TaskEntry[] = seedTaskEntries();
   private favoriteTasks: FavoriteTask[] = [];
   private flagThresholds: FlagThresholds = { ...DEFAULT_FLAG_THRESHOLDS };
   private flagRecords: FlagRecord[] = [];
   private weeklySubmissions: WeeklySubmission[] = [];
-  private timesheetSubmissions: TimesheetSubmission[] = [];
+  private timesheetSubmissions: TimesheetSubmission[] = seedTimesheetSubmissions();
   private notifications: Notification[] = [];
   private clockCorrectionRequests: ClockCorrectionRequest[] = [];
   private manualSessionRequests: ManualSessionRequest[] = [];
-  private expenses: Expense[] = [];
+  private expenses: Expense[] = seedExpenses();
   private unavailabilityBlocks: UnavailabilityBlock[] = [];
   private nextId = 1;
 

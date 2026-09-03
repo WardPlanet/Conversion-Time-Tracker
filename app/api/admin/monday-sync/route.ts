@@ -10,6 +10,7 @@ import {
   type MondayTimesheetRow,
 } from "@/lib/integrations/monday";
 import { weekStartDateFor } from "@/lib/domain/weekly-submissions";
+import { displayTaskTitle } from "@/lib/domain/tasks";
 import { computeWorkedMs, msToHours } from "@/lib/domain/worked-hours";
 import { addDays } from "date-fns";
 
@@ -68,11 +69,13 @@ export async function POST() {
     const subs = subsByTrainer.get(e.trainerId) ?? [];
     const sub = subs.find((s) => s.weekStartDate === weekStart);
     const trainerName = trainer?.name ?? e.trainerId;
+    const taskTitle = task ? displayTaskTitle(task) : e.taskId;
     return {
-      itemName: `${trainerName} – ${project?.name ?? e.projectId} – ${e.date}`,
+      // "Entry" column (item name) = Task title
+      itemName: taskTitle,
       trainer: trainerName,
       project: project?.name ?? e.projectId,
-      task: task?.title ?? e.taskId,
+      task: taskTitle,
       date: e.date,
       hours: e.hours,
       location: e.location ?? "",
@@ -94,7 +97,8 @@ export async function POST() {
   ).flat();
 
   const expenseRows: MondayExpenseRow[] = allExpenses.map((e) => ({
-    itemName: `${e.trainerName} – ${e.category} – ${e.date}`,
+    // "Entry" column (item name) = Category
+    itemName: e.category,
     trainer: e.trainerName,
     project: e.projectId ? (projectsById.get(e.projectId)?.name ?? e.projectId) : "",
     date: e.date,
