@@ -183,6 +183,8 @@ export interface TaskEntry {
   taskId: string;
   note: string;
   hours: number;
+  /** Required for customer projects (denticon/cloud9); absent for internal_admin projects. Free text: supports OIDs, location names, multiple locations, or "all locations". */
+  location?: string;
   bookingId?: string;
   createdAt: string; // ISO 8601
 }

@@ -15,6 +15,10 @@ export async function PATCH(
   const taskId = typeof body?.taskId === "string" ? body.taskId : "";
   const note = typeof body?.note === "string" ? body.note.trim() : "";
   const hours = typeof body?.hours === "number" ? body.hours : NaN;
+  const location =
+    typeof body?.location === "string" && body.location.trim()
+      ? body.location.trim()
+      : undefined;
 
   if (!projectId || !office || !taskId || !note || !(hours > 0)) {
     return NextResponse.json(
@@ -26,10 +30,21 @@ export async function PATCH(
     );
   }
 
+  const project = await store.getProject(projectId);
+  if (!project) {
+    return NextResponse.json({ error: "Project not found." }, { status: 400 });
+  }
+  if (project.productLine !== "internal_admin" && !location) {
+    return NextResponse.json(
+      { error: "A location is required for customer project entries." },
+      { status: 400 }
+    );
+  }
+
   try {
     const entry = await store.updateTaskEntry(
       params.id,
-      { projectId, office, taskId, note, hours },
+      { projectId, office, taskId, note, hours, location },
       { id: auth.session.userId, role: auth.session.role }
     );
     return NextResponse.json({ entry });

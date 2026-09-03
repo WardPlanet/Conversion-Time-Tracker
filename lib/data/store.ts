@@ -131,6 +131,8 @@ export interface CreateTaskEntryInput {
   taskId: string;
   note: string;
   hours: number;
+  /** Required when the project is a customer project (denticon/cloud9). */
+  location?: string;
   bookingId?: string;
 }
 
@@ -141,6 +143,8 @@ export interface UpdateTaskEntryInput {
   taskId: string;
   note: string;
   hours: number;
+  /** Required when the project is a customer project (denticon/cloud9). */
+  location?: string;
 }
 
 export interface DismissFlagInput {

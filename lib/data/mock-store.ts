@@ -999,6 +999,7 @@ export class MockDataStore implements DataStore {
       taskId: input.taskId,
       note: input.note,
       hours: input.hours,
+      location: input.location,
       bookingId: input.bookingId,
       createdAt: new Date().toISOString(),
     };
@@ -1085,6 +1086,7 @@ export class MockDataStore implements DataStore {
     entry.taskId = updates.taskId;
     entry.note = updates.note;
     entry.hours = updates.hours;
+    entry.location = updates.location;
     return entry;
   }
 

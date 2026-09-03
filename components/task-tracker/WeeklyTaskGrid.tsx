@@ -43,7 +43,14 @@ function EntryCard({
         </span>
       </div>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-brand-darkBlue/60">{entry.office}</p>
+        <div className="min-w-0">
+          <p className="text-brand-darkBlue/60">{entry.office}</p>
+          {entry.location && (
+            <p className="truncate text-brand-darkBlue/50" title={entry.location}>
+              {entry.location}
+            </p>
+          )}
+        </div>
         {entry.note && (
           <span
             title={entry.note}
@@ -107,7 +114,7 @@ function QuickAddPopover({
   day: Date;
   offices: Office[];
   tasks: Task[];
-  prefill: { office: string; taskId: string };
+  prefill: { office: string; taskId: string; location?: string };
   anchorRect: DOMRect;
   onClose: () => void;
   onSave: (input: {
@@ -115,6 +122,7 @@ function QuickAddPopover({
     taskId: string;
     hours: number;
     note: string;
+    location?: string;
   }) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [values, setValues] = useState<TaskEntryFieldValues>({
@@ -123,6 +131,7 @@ function QuickAddPopover({
     taskId: prefill.taskId,
     hours: "",
     note: "",
+    location: prefill.location ?? "",
   });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -186,6 +195,7 @@ function QuickAddPopover({
         taskId: values.taskId,
         hours,
         note: values.note,
+        location: values.location || undefined,
       });
       if (!result.ok) {
         setError(result.error ?? "Failed to log task entry.");
@@ -287,6 +297,7 @@ export function WeeklyTaskGrid({
     taskId: string;
     hours: number;
     note: string;
+    location?: string;
   }) => Promise<{ ok: boolean; error?: string }>;
   /**
    * Called when a cell in the trailing "add new" row is clicked — opens the
@@ -456,6 +467,7 @@ export function WeeklyTaskGrid({
             return {
               office: mostRecent?.office ?? "",
               taskId: mostRecent?.taskId ?? "",
+              location: mostRecent?.location ?? "",
             };
           })()}
           onClose={() => setQuickAddTarget(null)}

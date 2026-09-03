@@ -57,6 +57,10 @@ export async function POST(request: Request) {
   const taskId = typeof body?.taskId === "string" ? body.taskId : "";
   const note = typeof body?.note === "string" ? body.note.trim() : "";
   const hours = typeof body?.hours === "number" ? body.hours : NaN;
+  const location =
+    typeof body?.location === "string" && body.location.trim()
+      ? body.location.trim()
+      : undefined;
   const bookingId =
     typeof body?.bookingId === "string" && body.bookingId
       ? body.bookingId
@@ -73,11 +77,22 @@ export async function POST(request: Request) {
     );
   }
 
+  const project = await store.getProject(projectId);
+  if (!project) {
+    return NextResponse.json({ error: "Project not found." }, { status: 400 });
+  }
+  if (project.productLine !== "internal_admin" && !location) {
+    return NextResponse.json(
+      { error: "A location is required for customer project entries." },
+      { status: 400 }
+    );
+  }
+
   const actor = { id: auth.session.userId, role: auth.session.role };
 
   try {
     const entry = await store.createTaskEntry(
-      { date, projectId, office, taskId, note, hours, bookingId },
+      { date, projectId, office, taskId, note, hours, location, bookingId },
       actor
     );
 

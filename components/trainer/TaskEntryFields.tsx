@@ -8,6 +8,7 @@ export interface TaskEntryFieldValues {
   taskId: string;
   hours: string;
   note: string;
+  location: string;
 }
 
 /**
@@ -40,6 +41,8 @@ export function TaskEntryFields({
   const tasksForSelectedProject = tasks.filter(
     (t) => t.projectId === value.projectId
   );
+  const selectedProject = projects.find((p) => p.id === value.projectId);
+  const requiresLocation = selectedProject?.productLine !== "internal_admin" && Boolean(selectedProject);
 
   return (
     <>
@@ -53,7 +56,7 @@ export function TaskEntryFields({
             disabled={disabled}
             value={value.projectId}
             onChange={(e) =>
-              onChange({ projectId: e.target.value, office: "", taskId: "" })
+              onChange({ projectId: e.target.value, office: "", taskId: "", location: "" })
             }
             className="mt-1 block w-full rounded-md border border-brand-darkBlue/20 px-3 py-2 text-sm shadow-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue disabled:bg-brand-blueWater/50 disabled:text-brand-darkBlue/40"
           >
@@ -154,6 +157,26 @@ export function TaskEntryFields({
           className="mt-1 block w-full rounded-md border border-brand-darkBlue/20 px-3 py-2 text-sm shadow-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue disabled:bg-brand-blueWater/50 disabled:text-brand-darkBlue/40"
         />
       </label>
+
+      {requiresLocation && (
+        <label className="block sm:col-span-2">
+          <span className="block text-sm font-medium text-brand-darkBlue/80">
+            Location
+          </span>
+          <input
+            type="text"
+            required
+            disabled={disabled}
+            value={value.location}
+            onChange={(e) => onChange({ location: e.target.value })}
+            placeholder="e.g. OID 12345, East Side Dental, all locations"
+            className="mt-1 block w-full rounded-md border border-brand-darkBlue/20 px-3 py-2 text-sm shadow-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue disabled:bg-brand-blueWater/50 disabled:text-brand-darkBlue/40"
+          />
+          <p className="mt-1 text-xs text-brand-darkBlue/50">
+            Required for billing. Use OIDs for Denticon, location names for Cloud 9, or describe multiple locations.
+          </p>
+        </label>
+      )}
     </>
   );
 }

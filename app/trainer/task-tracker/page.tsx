@@ -53,6 +53,7 @@ function emptyForm() {
     taskId: "",
     note: "",
     hours: "",
+    location: "",
     bookingId: "",
     markComplete: false,
   };
@@ -88,6 +89,7 @@ function EntryEditor({
     taskId: entry.taskId,
     hours: String(entry.hours),
     note: entry.note,
+    location: entry.location ?? "",
   });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -126,6 +128,12 @@ function EntryEditor({
             <dt className="font-medium text-brand-darkBlue/80">Hours</dt>
             <dd className="text-brand-darkBlue/70">{formatHours(entry.hours)}</dd>
           </div>
+          {entry.location && (
+            <div>
+              <dt className="font-medium text-brand-darkBlue/80">Location</dt>
+              <dd className="text-brand-darkBlue/70">{entry.location}</dd>
+            </div>
+          )}
           <div>
             <dt className="font-medium text-brand-darkBlue/80">Note</dt>
             <dd className="whitespace-pre-wrap text-brand-darkBlue/70">
@@ -167,6 +175,7 @@ function EntryEditor({
           taskId: values.taskId,
           note: values.note,
           hours,
+          location: values.location || undefined,
         }),
       });
       const data = await response.json();
@@ -391,6 +400,7 @@ export default function TaskTrackerPage() {
           taskId: form.taskId,
           note: form.note,
           hours,
+          location: form.location || undefined,
           bookingId: form.bookingId || undefined,
           markComplete: form.markComplete,
         }),
@@ -418,6 +428,7 @@ export default function TaskTrackerPage() {
     taskId: string;
     hours: number;
     note: string;
+    location?: string;
   }): Promise<{ ok: boolean; error?: string }> {
     const response = await fetch("/api/trainer/task-entries", {
       method: "POST",
@@ -429,6 +440,7 @@ export default function TaskTrackerPage() {
         taskId: input.taskId,
         note: input.note,
         hours: input.hours,
+        location: input.location || undefined,
       }),
     });
     const data = await response.json();
@@ -652,6 +664,7 @@ export default function TaskTrackerPage() {
               taskId: form.taskId,
               hours: form.hours,
               note: form.note,
+              location: form.location,
             }}
             onChange={(patch) =>
               setForm((f) => ({
