@@ -129,7 +129,7 @@ export type ManualSessionRequestStatus = "pending" | "approved" | "denied";
 export interface ManualSessionBreakInput {
   start: string; // ISO 8601
   end: string; // ISO 8601
-}
+} 
 
 /**
  * A trainer manually logging a full past day they forgot to clock in/out
