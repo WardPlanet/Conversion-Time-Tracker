@@ -165,6 +165,8 @@ export interface Office {
   projectId: string;
   name: string;
   active: boolean;
+  /** True once training for this OID is fully complete — excluded from trainer dropdowns. */
+  completed?: boolean;
 }
 
 /**

@@ -71,7 +71,7 @@ export function TaskEntryFields({
       )}
 
       <label className="block">
-        <span className="block text-sm font-medium text-brand-darkBlue/80">Office</span>
+        <span className="block text-sm font-medium text-brand-darkBlue/80">OID</span>
         <select
           required
           disabled={disabled || !value.projectId}
@@ -80,7 +80,7 @@ export function TaskEntryFields({
           className="mt-1 block w-full rounded-md border border-brand-darkBlue/20 px-3 py-2 text-sm shadow-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue disabled:bg-brand-blueWater/50 disabled:text-brand-darkBlue/40"
         >
           <option value="">
-            {value.projectId ? "Select an office" : "Select a project first"}
+            {value.projectId ? "Select an OID" : "Select a project first"}
           </option>
           {officesForSelectedProject.map((o) => (
             <option key={o.id} value={o.name}>
@@ -158,25 +158,6 @@ export function TaskEntryFields({
         />
       </label>
 
-      {requiresLocation && (
-        <label className="block sm:col-span-2">
-          <span className="block text-sm font-medium text-brand-darkBlue/80">
-            Location
-          </span>
-          <input
-            type="text"
-            required
-            disabled={disabled}
-            value={value.location}
-            onChange={(e) => onChange({ location: e.target.value })}
-            placeholder="e.g. OID 12345, East Side Dental, all locations"
-            className="mt-1 block w-full rounded-md border border-brand-darkBlue/20 px-3 py-2 text-sm shadow-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue disabled:bg-brand-blueWater/50 disabled:text-brand-darkBlue/40"
-          />
-          <p className="mt-1 text-xs text-brand-darkBlue/50">
-            Required for billing. Use OIDs for Denticon, location names for Cloud 9, or describe multiple locations.
-          </p>
-        </label>
-      )}
     </>
   );
 }

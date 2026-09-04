@@ -10,18 +10,26 @@ export async function PATCH(
   if (!auth.session) return auth.response;
 
   const body = await request.json().catch(() => null);
-  if (typeof body?.active !== "boolean") {
+  const hasActive = typeof body?.active === "boolean";
+  const hasCompleted = typeof body?.completed === "boolean";
+
+  if (!hasActive && !hasCompleted) {
     return NextResponse.json(
-      { error: "active (boolean) is required." },
+      { error: "active or completed (boolean) is required." },
       { status: 400 }
     );
   }
 
+  const actor = { id: auth.session.userId, role: auth.session.role };
+
   try {
-    const office = await store.setOfficeActive(params.id, body.active, {
-      id: auth.session.userId,
-      role: auth.session.role,
-    });
+    let office;
+    if (hasCompleted) {
+      office = await store.setOfficeCompleted(params.id, body.completed, actor);
+    }
+    if (hasActive) {
+      office = await store.setOfficeActive(params.id, body.active, actor);
+    }
     return NextResponse.json({ office });
   } catch (err) {
     const message =

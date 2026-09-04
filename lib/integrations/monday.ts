@@ -260,11 +260,10 @@ export async function syncAll(
   for (const row of timeEntries) {
     try {
       const colValues = buildColumnValues(columns, {
-        // User mapping: Date→Entry Date, Project→Client, Office→Location, Location→OID, Note→Task Description, Hours→Time Spent
+        // User mapping: Date→Entry Date, Project→Client, Office(OID)→OID, Note→Task Description, Hours→Time Spent
         "entry date":         { kind: "date",   value: row.date },
         "client":             { kind: "text",   value: row.project },
-        "location":           { kind: "text",   value: row.office },
-        "oid":                { kind: "text",   value: row.location },
+        "oid":                { kind: "text",   value: row.office },
         "task description":   { kind: "text",   value: row.note },
         "time spent (hours)": { kind: "number", value: row.hours },
         "billing":            { kind: "status", label: row.billable ? "Billable" : "Non-billable" },

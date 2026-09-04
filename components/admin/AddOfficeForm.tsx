@@ -46,7 +46,7 @@ export function AddOfficeForm({
         <input
           type="text"
           required
-          placeholder="New office name"
+          placeholder="New OID (e.g. 12345)"
           value={name}
           onChange={(e) => setName(e.target.value)}
           className="flex-1 rounded-md border border-brand-darkBlue/20 px-3 py-2 text-sm shadow-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"

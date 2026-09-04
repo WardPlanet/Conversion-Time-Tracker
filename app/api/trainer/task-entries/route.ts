@@ -22,7 +22,7 @@ export async function GET() {
   );
   // Flattened across every active project — the client filters by whichever
   // project is currently selected in the form (cascading dropdown).
-  const offices = officesByProject.flat().filter((o) => o.active);
+  const offices = officesByProject.flat().filter((o) => o.active && !o.completed);
 
   const projectsById = new Map(allProjects.map((p) => [p.id, p]));
   const tasksById = new Map(tasks.map((t) => [t.id, t]));
@@ -80,12 +80,6 @@ export async function POST(request: Request) {
   const project = await store.getProject(projectId);
   if (!project) {
     return NextResponse.json({ error: "Project not found." }, { status: 400 });
-  }
-  if (project.productLine !== "internal_admin" && !location) {
-    return NextResponse.json(
-      { error: "A location is required for customer project entries." },
-      { status: 400 }
-    );
   }
 
   const actor = { id: auth.session.userId, role: auth.session.role };

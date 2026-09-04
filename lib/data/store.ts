@@ -347,6 +347,11 @@ export interface DataStore {
     active: boolean,
     actor: Actor
   ): Promise<Office>;
+  setOfficeCompleted(
+    officeId: string,
+    completed: boolean,
+    actor: Actor
+  ): Promise<Office>;
 
   // Task entries (daily work log)
   listTaskEntriesForTrainer(trainerId: string): Promise<TaskEntry[]>;

@@ -34,12 +34,6 @@ export async function PATCH(
   if (!project) {
     return NextResponse.json({ error: "Project not found." }, { status: 400 });
   }
-  if (project.productLine !== "internal_admin" && !location) {
-    return NextResponse.json(
-      { error: "A location is required for customer project entries." },
-      { status: 400 }
-    );
-  }
 
   try {
     const entry = await store.updateTaskEntry(

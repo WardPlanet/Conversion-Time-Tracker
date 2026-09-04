@@ -94,6 +94,33 @@ function seedUsers(): User[] {
       active: true,
     },
     {
+      id: "user-cclark",
+      role: "admin",
+      username: "carla.clark@planetdds.com",
+      passwordHash: hashPasswordSync("Welcome1!"),
+      name: "Carla Clark",
+      email: "carla.clark@planetdds.com",
+      active: true,
+    },
+    {
+      id: "user-darechavaleta",
+      role: "admin",
+      username: "denise.arechavaleta@planetdds.com",
+      passwordHash: hashPasswordSync("Welcome1!"),
+      name: "Denise Arechavaleta",
+      email: "denise.arechavaleta@planetdds.com",
+      active: true,
+    },
+    {
+      id: "user-ljaquin",
+      role: "admin",
+      username: "lenore.jaquin@planetdds.com",
+      passwordHash: hashPasswordSync("Welcome1!"),
+      name: "Lenore Jaquin",
+      email: "lenore.jaquin@planetdds.com",
+      active: true,
+    },
+    {
       id: "user-jsmith",
       role: "trainer",
       username: "jsmith",
@@ -236,11 +263,11 @@ function seedBookings(): Booking[] {
 
 function seedOffices(): Office[] {
   return [
-    { id: "office-1a", projectId: "proj-1", name: "Denver", active: true },
-    { id: "office-1b", projectId: "proj-1", name: "Chicago", active: true },
-    { id: "office-2a", projectId: "proj-2", name: "Atlanta", active: true },
-    { id: "office-3a", projectId: "proj-3", name: "Remote", active: true },
-    { id: "office-4a", projectId: "proj-4", name: "Remote", active: true },
+    { id: "office-1a", projectId: "proj-1", name: "10001", active: true },
+    { id: "office-1b", projectId: "proj-1", name: "10002", active: true },
+    { id: "office-2a", projectId: "proj-2", name: "20001", active: true },
+    { id: "office-3a", projectId: "proj-3", name: "30001", active: true },
+    { id: "office-4a", projectId: "proj-4", name: "40001", active: true },
   ];
 }
 
@@ -248,18 +275,18 @@ function seedTaskEntries(): TaskEntry[] {
   // task IDs: task-p{projectIndex+1}-t{trainerIndex+1}-{taskIndex+1}
   // proj-1 (cloud9), proj-2 (denticon), proj-3 (denticon), proj-4 (cloud9)
   // jsmith = t1, rlee = t2
+  // office field stores the OID value (the office name), not the office ID
   return [
-    // Jordan Smith — Project #1 (cloud9), Denver office
+    // Jordan Smith — Project #1 (cloud9)
     {
       id: "te-1",
       trainerId: "user-jsmith",
       date: "2026-08-25",
       projectId: "proj-1",
-      office: "office-1a",
+      office: "10001",
       taskId: "task-p1-t1-1",
       note: "Initial onboarding session, covered scheduling module.",
       hours: 4,
-      location: "Denver Main Office",
       createdAt: "2026-08-25T16:00:00.000Z",
     },
     {
@@ -267,11 +294,10 @@ function seedTaskEntries(): TaskEntry[] {
       trainerId: "user-jsmith",
       date: "2026-08-26",
       projectId: "proj-1",
-      office: "office-1a",
+      office: "10001",
       taskId: "task-p1-t1-5",
       note: "Virtual follow-up on appointment types setup.",
       hours: 2,
-      location: "Denver Main Office",
       createdAt: "2026-08-26T15:00:00.000Z",
     },
     {
@@ -279,11 +305,10 @@ function seedTaskEntries(): TaskEntry[] {
       trainerId: "user-jsmith",
       date: "2026-08-27",
       projectId: "proj-2",
-      office: "office-2a",
+      office: "20001",
       taskId: "task-p2-t1-1",
       note: "On-site training for imaging module — all staff attended.",
       hours: 6,
-      location: "Atlanta Peachtree Location",
       createdAt: "2026-08-27T17:00:00.000Z",
     },
     {
@@ -291,11 +316,10 @@ function seedTaskEntries(): TaskEntry[] {
       trainerId: "user-jsmith",
       date: "2026-08-28",
       projectId: "proj-2",
-      office: "office-2a",
+      office: "20001",
       taskId: "task-p2-t1-3",
       note: "Addressed billing workflow questions from front desk.",
       hours: 3,
-      location: "Atlanta Peachtree Location",
       createdAt: "2026-08-28T15:00:00.000Z",
     },
     {
@@ -303,24 +327,22 @@ function seedTaskEntries(): TaskEntry[] {
       trainerId: "user-jsmith",
       date: "2026-09-01",
       projectId: "proj-1",
-      office: "office-1b",
+      office: "10002",
       taskId: "task-p1-t1-3",
-      note: "Chicago location kickoff — walked through provider setup.",
+      note: "Second location kickoff — walked through provider setup.",
       hours: 5,
-      location: "Chicago Lincoln Park Office",
       createdAt: "2026-09-01T18:00:00.000Z",
     },
-    // Riley Lee — Project #2 (denticon), Atlanta office
+    // Riley Lee — Project #2 (denticon)
     {
       id: "te-6",
       trainerId: "user-rlee",
       date: "2026-08-25",
       projectId: "proj-2",
-      office: "office-2a",
+      office: "20001",
       taskId: "task-p2-t2-1",
       note: "Day 1 on-site training, covered patient check-in flow.",
       hours: 7,
-      location: "Atlanta Buckhead Clinic",
       createdAt: "2026-08-25T17:30:00.000Z",
     },
     {
@@ -328,11 +350,10 @@ function seedTaskEntries(): TaskEntry[] {
       trainerId: "user-rlee",
       date: "2026-08-26",
       projectId: "proj-2",
-      office: "office-2a",
-      taskId: "task-p2-t2-2",
+      office: "20001",
+      taskId: "task-p2-t2-2", // Virtual Customer Support (Non Billable)
       note: "Virtual support call — helped with appointment reminders config.",
       hours: 1.5,
-      location: "Atlanta Buckhead Clinic",
       createdAt: "2026-08-26T14:00:00.000Z",
     },
     {
@@ -340,11 +361,10 @@ function seedTaskEntries(): TaskEntry[] {
       trainerId: "user-rlee",
       date: "2026-08-28",
       projectId: "proj-3",
-      office: "office-3a",
+      office: "30001",
       taskId: "task-p3-t2-1",
       note: "Remote refresher session — walkthrough of ledger corrections.",
       hours: 2,
-      location: "Remote — Zoom",
       createdAt: "2026-08-28T16:00:00.000Z",
     },
     {
@@ -352,11 +372,10 @@ function seedTaskEntries(): TaskEntry[] {
       trainerId: "user-rlee",
       date: "2026-09-02",
       projectId: "proj-2",
-      office: "office-2a",
+      office: "20001",
       taskId: "task-p2-t2-3",
       note: "On-site support for end-of-month close procedures.",
       hours: 4,
-      location: "Atlanta Buckhead Clinic",
       createdAt: "2026-09-02T17:00:00.000Z",
     },
     {
@@ -364,11 +383,10 @@ function seedTaskEntries(): TaskEntry[] {
       trainerId: "user-rlee",
       date: "2026-09-03",
       projectId: "proj-4",
-      office: "office-4a",
+      office: "40001",
       taskId: "task-p4-t2-5",
       note: "Virtual training session on treatment plan presentation.",
       hours: 1.5,
-      location: "Remote — Teams",
       createdAt: "2026-09-03T15:00:00.000Z",
     },
     // Non-billable entries
@@ -377,11 +395,10 @@ function seedTaskEntries(): TaskEntry[] {
       trainerId: "user-jsmith",
       date: "2026-08-26",
       projectId: "proj-1",
-      office: "office-1a",
+      office: "10001",
       taskId: "task-p1-t1-2", // Virtual Customer Support (Non Billable)
       note: "Follow-up support call, no charge to client.",
       hours: 1,
-      location: "Denver Main Office",
       createdAt: "2026-08-26T16:00:00.000Z",
     },
     {
@@ -389,11 +406,10 @@ function seedTaskEntries(): TaskEntry[] {
       trainerId: "user-jsmith",
       date: "2026-08-27",
       projectId: "proj-2",
-      office: "office-2a",
+      office: "20001",
       taskId: "task-p2-t1-4", // On-Site Customer Support (Non Billable)
       note: "Courtesy on-site visit to address post-training questions.",
       hours: 2,
-      location: "Atlanta Peachtree Location",
       createdAt: "2026-08-27T18:00:00.000Z",
     },
     {
@@ -401,11 +417,10 @@ function seedTaskEntries(): TaskEntry[] {
       trainerId: "user-rlee",
       date: "2026-08-29",
       projectId: "proj-2",
-      office: "office-2a",
+      office: "20001",
       taskId: "task-p2-t2-4", // On-Site Customer Support (Non Billable)
       note: "Non-billable on-site check-in after go-live.",
       hours: 1.5,
-      location: "Atlanta Buckhead Clinic",
       createdAt: "2026-08-29T14:00:00.000Z",
     },
   ];
@@ -1195,6 +1210,22 @@ export class MockDataStore implements DataStore {
       throw new Error(`Office "${officeId}" not found.`);
     }
     office.active = active;
+    return office;
+  }
+
+  async setOfficeCompleted(
+    officeId: string,
+    completed: boolean,
+    actor: Actor
+  ): Promise<Office> {
+    this.requireAdmin(actor, "manage the office list");
+
+    const office = this.offices.find((o) => o.id === officeId);
+    if (!office) {
+      throw new Error(`Office "${officeId}" not found.`);
+    }
+    office.completed = completed;
+    if (completed) office.active = false;
     return office;
   }
 

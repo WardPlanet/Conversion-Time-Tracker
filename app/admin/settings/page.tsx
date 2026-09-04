@@ -2,6 +2,7 @@ import Link from "next/link";
 import { FlagThresholdsForm } from "@/components/admin/FlagThresholdsForm";
 import { DataExportSection } from "@/components/admin/DataExportSection";
 import { MondaySyncSection } from "@/components/admin/MondaySyncSection";
+import { ChangePasswordSection } from "@/components/shared/ChangePasswordSection";
 
 export default function AdminSettingsPage() {
   return (
@@ -26,6 +27,8 @@ export default function AdminSettingsPage() {
         <DataExportSection />
 
         <MondaySyncSection />
+
+        <ChangePasswordSection endpoint="/api/admin/change-password" />
       </div>
     </div>
   );
