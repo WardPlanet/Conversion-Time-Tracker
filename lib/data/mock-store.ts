@@ -2,6 +2,7 @@ import { hashPasswordSync } from "@/lib/auth/password";
 import type {
   User,
   PublicUser,
+  Partner,
   Project,
   Task,
   TaskStatus,
@@ -41,6 +42,9 @@ import type {
   CreateExpenseInput,
   UpdateExpenseInput,
   CreateUnavailabilityBlockInput,
+  CreatePartnerInput,
+  CreatePartnerAdminInput,
+  EnrichedWorkOrder,
   DataStore,
 } from "@/lib/data/store";
 import { ForbiddenError, BookingConflictError } from "@/lib/data/store";
@@ -80,6 +84,17 @@ const SEVERITY_RANK: Record<Flag["severity"], number> = { warning: 0, info: 1 };
 function toPublicUser(user: User): PublicUser {
   const { passwordHash: _passwordHash, ...publicUser } = user;
   return publicUser;
+}
+
+function seedPartners(): Partner[] {
+  return [
+    {
+      id: "partner-1",
+      name: "Apex Training Partners",
+      contactEmail: "partners@apextraining.com",
+      active: true,
+    },
+  ];
 }
 
 function seedUsers(): User[] {
@@ -128,6 +143,7 @@ function seedUsers(): User[] {
       name: "Jordan Smith",
       email: "jordan.smith@example.com",
       active: true,
+      partnerId: "partner-1",
     },
     {
       id: "user-rlee",
@@ -137,6 +153,17 @@ function seedUsers(): User[] {
       name: "Riley Lee",
       email: "riley.lee@example.com",
       active: true,
+      partnerId: "partner-1",
+    },
+    {
+      id: "user-partner1-admin",
+      role: "partner_admin",
+      username: "partner.admin",
+      passwordHash: hashPasswordSync("Welcome1!"),
+      name: "Partner Admin",
+      email: "admin@apextraining.com",
+      active: true,
+      partnerId: "partner-1",
     },
   ];
 }
@@ -548,6 +575,7 @@ function seedTimeClockEvents(): TimeClockEvent[] {
  * implementation must satisfy the same rules to pass this contract.
  */
 export class MockDataStore implements DataStore {
+  private partners: Partner[] = seedPartners();
   private users: User[] = seedUsers();
   private projects: Project[] = seedProjects();
   private tasks: Task[] = seedTasks();
@@ -576,6 +604,144 @@ export class MockDataStore implements DataStore {
       throw new ForbiddenError(`Only admins can ${action}.`);
     }
   }
+
+  // ─── Partners ───────────────────────────────────────────────────────────────
+
+  async listPartners(): Promise<Partner[]> {
+    return this.partners;
+  }
+
+  async getPartner(id: string): Promise<Partner | null> {
+    return this.partners.find((p) => p.id === id) ?? null;
+  }
+
+  async createPartner(input: CreatePartnerInput, actor: Actor): Promise<Partner> {
+    this.requireAdmin(actor, "create partners");
+    const partner: Partner = {
+      id: this.generateId("partner"),
+      name: input.name.trim(),
+      contactEmail: input.contactEmail.trim(),
+      active: true,
+    };
+    this.partners.push(partner);
+    return partner;
+  }
+
+  async createPartnerAdmin(input: CreatePartnerAdminInput, actor: Actor): Promise<PublicUser> {
+    this.requireAdmin(actor, "create partner admin accounts");
+    const partner = this.partners.find((p) => p.id === input.partnerId);
+    if (!partner) throw new Error(`Partner "${input.partnerId}" not found.`);
+    if (this.users.some((u) => u.username === input.username)) {
+      throw new Error(`Username "${input.username}" is already taken.`);
+    }
+    const user: User = {
+      id: this.generateId("user"),
+      role: "partner_admin",
+      username: input.username,
+      passwordHash: input.passwordHash,
+      name: input.name,
+      email: input.email,
+      active: true,
+      partnerId: input.partnerId,
+    };
+    this.users.push(user);
+    return toPublicUser(user);
+  }
+
+  async assignTrainerToPartner(trainerId: string, partnerId: string | null, actor: Actor): Promise<PublicUser> {
+    this.requireAdmin(actor, "assign trainers to partners");
+    const trainer = this.users.find((u) => u.id === trainerId && u.role === "trainer");
+    if (!trainer) throw new Error(`Trainer "${trainerId}" not found.`);
+    if (partnerId !== null) {
+      const partner = this.partners.find((p) => p.id === partnerId);
+      if (!partner) throw new Error(`Partner "${partnerId}" not found.`);
+    }
+    trainer.partnerId = partnerId ?? undefined;
+    return toPublicUser(trainer);
+  }
+
+  async listWorkOrdersForPartner(actor: Actor): Promise<EnrichedWorkOrder[]> {
+    if (actor.role !== "partner_admin") {
+      throw new ForbiddenError("Only partner admins can view work orders.");
+    }
+    const partnerAdmin = this.users.find((u) => u.id === actor.id);
+    if (!partnerAdmin?.partnerId) {
+      throw new Error("Partner admin is not assigned to a partner.");
+    }
+    const partnerId = partnerAdmin.partnerId;
+    const partnerTrainerIds = new Set(
+      this.users
+        .filter((u) => u.role === "trainer" && u.partnerId === partnerId)
+        .map((u) => u.id)
+    );
+    const projectsById = new Map(this.projects.map((p) => [p.id, p]));
+    const officesById = new Map(this.offices.map((o) => [o.id, o]));
+    const trainersById = new Map(
+      this.users.filter((u) => partnerTrainerIds.has(u.id)).map((u) => [u.id, toPublicUser(u)])
+    );
+    return this.bookings
+      .filter((b) => partnerTrainerIds.has(b.trainerId) && b.bookingType !== "travel")
+      .map((b) => ({
+        ...b,
+        trainer: trainersById.get(b.trainerId) ?? null,
+        project: projectsById.get(b.projectId) ?? null,
+        office: officesById.get(b.officeId) ?? null,
+      }));
+  }
+
+  async respondToWorkOrder(
+    bookingId: string,
+    action: "approve" | "deny",
+    actor: Actor,
+    reason?: string
+  ): Promise<Booking> {
+    if (actor.role !== "partner_admin") {
+      throw new ForbiddenError("Only partner admins can respond to work orders.");
+    }
+    const partnerAdmin = this.users.find((u) => u.id === actor.id);
+    if (!partnerAdmin?.partnerId) throw new Error("Partner admin is not assigned to a partner.");
+
+    const booking = this.bookings.find((b) => b.id === bookingId);
+    if (!booking) throw new Error(`Booking "${bookingId}" not found.`);
+
+    const trainer = this.users.find((u) => u.id === booking.trainerId);
+    if (!trainer || trainer.partnerId !== partnerAdmin.partnerId) {
+      throw new ForbiddenError("This work order does not belong to your partner.");
+    }
+    if (booking.status !== "pending") {
+      throw new Error("Only pending work orders can be approved or denied.");
+    }
+
+    const newStatus = action === "approve" ? "accepted" : "rejected";
+    booking.status = newStatus;
+    booking.statusChangedAt = new Date().toISOString();
+    if (action === "deny" && reason) {
+      booking.rejectionReason = reason;
+    }
+
+    // Auto-update travel day bookings in the same group
+    if (booking.groupId) {
+      for (const b of this.bookings) {
+        if (b.groupId === booking.groupId && b.bookingType === "travel" && b.status === "pending") {
+          b.status = newStatus;
+          b.statusChangedAt = booking.statusChangedAt;
+        }
+      }
+    }
+
+    // Notify admin of the decision
+    await this.createNotification({
+      type: action === "approve" ? "work_order_approved" : "work_order_denied",
+      recipientRole: "admin",
+      message: `${partnerAdmin.name} ${action === "approve" ? "approved" : "denied"} work order "${booking.title}" for ${trainer.name}.`,
+      relatedTrainerId: booking.trainerId,
+      relatedEntityId: booking.id,
+    });
+
+    return booking;
+  }
+
+  // ─── Users ──────────────────────────────────────────────────────────────────
 
   async getUserByUsername(username: string): Promise<User | null> {
     return this.users.find((u) => u.username === username) ?? null;

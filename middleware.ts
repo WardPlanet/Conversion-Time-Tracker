@@ -9,24 +9,32 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isAdminRoute = pathname.startsWith("/admin");
   const isTrainerRoute = pathname.startsWith("/trainer");
+  const isPartnerRoute = pathname.startsWith("/partner");
 
-  if ((isAdminRoute || isTrainerRoute) && !session) {
+  if ((isAdminRoute || isTrainerRoute || isPartnerRoute) && !session) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("from", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
   if (isAdminRoute && session?.role !== "admin") {
+    if (session?.role === "partner_admin") return NextResponse.redirect(new URL("/partner", request.url));
     return NextResponse.redirect(new URL("/trainer", request.url));
   }
 
   if (isTrainerRoute && session?.role !== "trainer") {
-    return NextResponse.redirect(new URL("/admin", request.url));
+    if (session?.role === "admin") return NextResponse.redirect(new URL("/admin", request.url));
+    return NextResponse.redirect(new URL("/partner", request.url));
+  }
+
+  if (isPartnerRoute && session?.role !== "partner_admin") {
+    if (session?.role === "admin") return NextResponse.redirect(new URL("/admin", request.url));
+    return NextResponse.redirect(new URL("/trainer", request.url));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/trainer/:path*"],
+  matcher: ["/admin/:path*", "/trainer/:path*", "/partner/:path*"],
 };

@@ -24,13 +24,15 @@ export default async function TrainerDashboardPage() {
   const session = await getSession();
   const trainerId = session!.userId;
 
-  const [stats, projects, tasks, taskEntries, bookings] = await Promise.all([
+  const [stats, projects, tasks, taskEntries, bookings, trainerUser] = await Promise.all([
     computeTrainerStats(store, trainerId),
     store.listProjects(),
     store.listTasksForTrainer(trainerId),
     store.listTaskEntriesForTrainer(trainerId),
     store.listBookingsForTrainer(trainerId),
+    store.getUserById(trainerId),
   ]);
+  const isPartnerManaged = !!trainerUser?.partnerId;
   const { hoursThisWeek, hoursThisMonth, tasksCompletedCount } = stats;
 
   const now = new Date();
@@ -70,7 +72,7 @@ export default async function TrainerDashboardPage() {
 
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1.3fr_1fr] lg:items-stretch">
           <div className="flex flex-col gap-4">
-            <PendingBookingsSection projects={projects} />
+            <PendingBookingsSection projects={projects} isPartnerManaged={isPartnerManaged} />
 
             <DashboardCard title="Billable hours this month">
               <BillableSplitBar split={billableSplit} />

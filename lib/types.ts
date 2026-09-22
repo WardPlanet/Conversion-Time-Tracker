@@ -1,4 +1,4 @@
-export type Role = "admin" | "trainer";
+export type Role = "admin" | "trainer" | "partner_admin";
 
 export interface User {
   id: string;
@@ -7,6 +7,16 @@ export interface User {
   passwordHash: string;
   name: string;
   email: string;
+  active: boolean;
+  /** Links a trainer or partner_admin to the Partner organization they belong to. */
+  partnerId?: string;
+}
+
+/** A partner organization that supplies trainers. Partner admins manage work orders on their trainers' behalf. */
+export interface Partner {
+  id: string;
+  name: string;
+  contactEmail: string;
   active: boolean;
 }
 
@@ -364,7 +374,9 @@ export type NotificationType =
   | "expense_submitted"
   | "expense_decision"
   | "booking_cancelled"
-  | "booking_rescheduled";
+  | "booking_rescheduled"
+  | "work_order_approved"
+  | "work_order_denied";
 
 /**
  * An alert generated as a side effect of a workflow event — e.g. a flag
