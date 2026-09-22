@@ -85,6 +85,12 @@ export interface Booking {
   rejectionReason?: string;
   /** Why the trainer asked to back out of an already-"accepted" booking. Required to request cancellation; kept on the record once "cancelled", cleared if an admin denies the request. */
   cancellationReason?: string;
+  /** Covers the entire calendar day — rendered in the all-day row of the week grid rather than time-positioned. */
+  allDay?: boolean;
+  /** "training" (default) or "travel" for the auto-added travel days before/after a training block. */
+  bookingType?: "training" | "travel";
+  /** Links all bookings created together in a single multi-day scheduling action (training days + travel days). */
+  groupId?: string;
 }
 
 export type TimeClockEventType =
