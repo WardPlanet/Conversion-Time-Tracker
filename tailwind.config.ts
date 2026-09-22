@@ -14,6 +14,7 @@ const config: Config = {
         brand: {
           blue: "#0069DC",
           darkBlue: "#000F60",
+          navy: "#0D2B6B",
           blueWater: "#D3E6F5",
           orange: "#FA4616",
           purple: "#833177",

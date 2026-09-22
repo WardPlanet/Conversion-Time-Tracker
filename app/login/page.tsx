@@ -36,7 +36,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-blue to-brand-darkBlue px-4">
+    <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-navy to-brand-darkBlue px-4">
       <div className="w-full max-w-sm rounded-xl border border-brand-darkBlue/10 bg-white p-8 shadow-sm">
         <img
           src="/planet-dds-logo.svg"
