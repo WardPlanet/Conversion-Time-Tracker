@@ -122,6 +122,9 @@ export interface CreateBookingInput {
   location: BookingLocation;
   billable: BillableStatus;
   notes?: string;
+  allDay?: boolean;
+  bookingType?: "training" | "travel";
+  groupId?: string;
 }
 
 export interface CreateTaskEntryInput {

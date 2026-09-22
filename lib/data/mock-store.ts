@@ -826,15 +826,17 @@ export class MockDataStore implements DataStore {
       throw new Error("End time must be after start time.");
     }
 
-    const conflict = findConflictingBooking(this.bookings, input.trainerId, {
-      startTime: input.startTime,
-      endTime: input.endTime,
-    });
-    if (conflict) {
-      throw new BookingConflictError(
-        `${trainer.name} already has a booking that overlaps this time.`,
-        conflict
-      );
+    if (input.bookingType !== "travel") {
+      const conflict = findConflictingBooking(this.bookings, input.trainerId, {
+        startTime: input.startTime,
+        endTime: input.endTime,
+      });
+      if (conflict) {
+        throw new BookingConflictError(
+          `${trainer.name} already has a booking that overlaps this time.`,
+          conflict
+        );
+      }
     }
 
     const booking: Booking = {
@@ -851,19 +853,24 @@ export class MockDataStore implements DataStore {
       status: "pending",
       notes: input.notes,
       statusChangedAt: new Date().toISOString(),
+      allDay: input.allDay,
+      bookingType: input.bookingType ?? "training",
+      groupId: input.groupId,
     };
     this.bookings.push(booking);
 
-    await this.createNotification({
-      type: "booking_created",
-      recipientRole: "trainer",
-      message: `New booking request: "${booking.title}" (${formatDateRange(
-        booking.startTime,
-        booking.endTime
-      )}).`,
-      relatedTrainerId: booking.trainerId,
-      relatedEntityId: booking.id,
-    });
+    if (input.bookingType !== "travel") {
+      await this.createNotification({
+        type: "booking_created",
+        recipientRole: "trainer",
+        message: `New booking request: "${booking.title}" (${formatDateRange(
+          booking.startTime,
+          booking.endTime
+        )}).`,
+        relatedTrainerId: booking.trainerId,
+        relatedEntityId: booking.id,
+      });
+    }
 
     return booking;
   }

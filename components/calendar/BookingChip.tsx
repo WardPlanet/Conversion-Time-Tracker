@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Plane } from "lucide-react";
 import type { Booking, Office, Project } from "@/lib/types";
 import { formatTime } from "@/lib/format";
 
@@ -32,6 +32,25 @@ export function BookingChip({
   label?: string;
   onClick: () => void;
 }) {
+  if (booking.bookingType === "travel") {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick();
+        }}
+        title={booking.title}
+        className="flex w-full items-center gap-1 overflow-hidden rounded bg-slate-100 px-1.5 py-0.5 text-left text-[11px] leading-tight text-slate-600 shadow-sm hover:bg-slate-200 border border-slate-300 border-l-[3px] border-l-slate-400"
+      >
+        <Plane className="h-2.5 w-2.5 shrink-0 text-slate-500" />
+        <span className="truncate">
+          Travel{label ? ` · ${label}` : ""}
+        </span>
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -53,7 +72,7 @@ export function BookingChip({
         )
       )}
       <span className="truncate">
-        {formatTime(booking.startTime)}
+        {booking.allDay ? "All day" : formatTime(booking.startTime)}
         {label ? ` · ${label}` : ""}
         {office ? ` · ${office.name}` : ""}
       </span>
