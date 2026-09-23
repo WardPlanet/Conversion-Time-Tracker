@@ -741,6 +741,148 @@ export class MockDataStore implements DataStore {
     return booking;
   }
 
+  private async getPartnerAdminContext(actor: Actor): Promise<{ partnerAdmin: User; partnerTrainerIds: Set<string> }> {
+    if (actor.role !== "partner_admin") throw new ForbiddenError("Only partner admins can access this.");
+    const partnerAdmin = this.users.find((u) => u.id === actor.id);
+    if (!partnerAdmin?.partnerId) throw new Error("Partner admin is not assigned to a partner.");
+    const partnerTrainerIds = new Set(
+      this.users.filter((u) => u.role === "trainer" && u.partnerId === partnerAdmin.partnerId).map((u) => u.id)
+    );
+    return { partnerAdmin, partnerTrainerIds };
+  }
+
+  async listSubmittedWeeklySubmissionsForPartner(
+    actor: Actor
+  ): Promise<Array<WeeklySubmission & { trainer: PublicUser | null }>> {
+    const { partnerTrainerIds } = await this.getPartnerAdminContext(actor);
+    const trainersById = new Map(
+      this.users.filter((u) => partnerTrainerIds.has(u.id)).map((u) => [u.id, toPublicUser(u)])
+    );
+    return this.weeklySubmissions
+      .filter((s) => partnerTrainerIds.has(s.trainerId) && s.status === "submitted")
+      .map((s) => ({ ...s, trainer: trainersById.get(s.trainerId) ?? null }));
+  }
+
+  async reviewWeeklySubmissionAsPartner(
+    submissionId: string,
+    action: "approve" | "reject",
+    actor: Actor,
+    reason?: string
+  ): Promise<WeeklySubmission> {
+    const { partnerAdmin, partnerTrainerIds } = await this.getPartnerAdminContext(actor);
+    const submission = this.weeklySubmissions.find((s) => s.id === submissionId);
+    if (!submission) throw new Error(`Submission "${submissionId}" not found.`);
+    if (!partnerTrainerIds.has(submission.trainerId)) throw new ForbiddenError("This submission does not belong to your partner.");
+    if (submission.status !== "submitted") throw new Error("Only submitted weeks can be approved or rejected.");
+    if (action === "reject" && !reason?.trim()) throw new Error("A reason is required to reject a submission.");
+
+    const now = new Date().toISOString();
+    submission.status = action === "approve" ? "approved" : "rejected";
+    submission.reviewedAt = now;
+    submission.reviewedByAdminId = partnerAdmin.id;
+    if (action === "reject") submission.rejectionReason = reason!.trim();
+
+    const weekLabel = submission.weekStartDate;
+    await this.createNotification({
+      type: "submission_decision",
+      recipientRole: "trainer",
+      message: action === "approve"
+        ? `Your Task Tracker week of ${weekLabel} was approved.`
+        : `Your Task Tracker week of ${weekLabel} was rejected: "${reason}"`,
+      relatedTrainerId: submission.trainerId,
+      relatedEntityId: submission.id,
+    });
+    return submission;
+  }
+
+  async listSubmittedTimesheetSubmissionsForPartner(
+    actor: Actor
+  ): Promise<Array<TimesheetSubmission & { trainer: PublicUser | null }>> {
+    const { partnerTrainerIds } = await this.getPartnerAdminContext(actor);
+    const trainersById = new Map(
+      this.users.filter((u) => partnerTrainerIds.has(u.id)).map((u) => [u.id, toPublicUser(u)])
+    );
+    return this.timesheetSubmissions
+      .filter((s) => partnerTrainerIds.has(s.trainerId) && s.status === "submitted")
+      .map((s) => ({ ...s, trainer: trainersById.get(s.trainerId) ?? null }));
+  }
+
+  async reviewTimesheetSubmissionAsPartner(
+    submissionId: string,
+    action: "approve" | "reject",
+    actor: Actor,
+    reason?: string
+  ): Promise<TimesheetSubmission> {
+    const { partnerAdmin, partnerTrainerIds } = await this.getPartnerAdminContext(actor);
+    const submission = this.timesheetSubmissions.find((s) => s.id === submissionId);
+    if (!submission) throw new Error(`Timesheet submission "${submissionId}" not found.`);
+    if (!partnerTrainerIds.has(submission.trainerId)) throw new ForbiddenError("This submission does not belong to your partner.");
+    if (submission.status !== "submitted") throw new Error("Only submitted timesheets can be approved or rejected.");
+    if (action === "reject" && !reason?.trim()) throw new Error("A reason is required to reject a timesheet.");
+
+    const now = new Date().toISOString();
+    submission.status = action === "approve" ? "approved" : "rejected";
+    submission.reviewedAt = now;
+    submission.reviewedByAdminId = partnerAdmin.id;
+    if (action === "reject") submission.rejectionReason = reason!.trim();
+
+    const weekLabel = submission.weekStartDate;
+    await this.createNotification({
+      type: "timesheet_submission_decision",
+      recipientRole: "trainer",
+      message: action === "approve"
+        ? `Your timesheet for the week of ${weekLabel} was approved.`
+        : `Your timesheet for the week of ${weekLabel} was rejected: "${reason}"`,
+      relatedTrainerId: submission.trainerId,
+      relatedEntityId: submission.id,
+    });
+    return submission;
+  }
+
+  async listPendingExpensesForPartner(
+    actor: Actor
+  ): Promise<Array<Expense & { trainer: PublicUser | null }>> {
+    const { partnerTrainerIds } = await this.getPartnerAdminContext(actor);
+    const trainersById = new Map(
+      this.users.filter((u) => partnerTrainerIds.has(u.id)).map((u) => [u.id, toPublicUser(u)])
+    );
+    return this.expenses
+      .filter((e) => partnerTrainerIds.has(e.trainerId) && e.status === "pending")
+      .map((e) => ({ ...e, trainer: trainersById.get(e.trainerId) ?? null }));
+  }
+
+  async reviewExpenseAsPartner(
+    expenseId: string,
+    action: "approve" | "reject",
+    actor: Actor,
+    reason?: string
+  ): Promise<Expense> {
+    const { partnerAdmin, partnerTrainerIds } = await this.getPartnerAdminContext(actor);
+    const expense = this.expenses.find((e) => e.id === expenseId);
+    if (!expense) throw new Error(`Expense "${expenseId}" not found.`);
+    if (!partnerTrainerIds.has(expense.trainerId)) throw new ForbiddenError("This expense does not belong to your partner.");
+    if (expense.status !== "pending") throw new Error("Only pending expenses can be approved or rejected.");
+    if (action === "reject" && !reason?.trim()) throw new Error("A reason is required to reject an expense.");
+
+    const now = new Date().toISOString();
+    expense.status = action === "approve" ? "approved" : "rejected";
+    expense.reviewedAt = now;
+    expense.reviewedByAdminId = partnerAdmin.id;
+    if (action === "reject") expense.rejectionReason = reason!.trim();
+
+    const formatted = `$${expense.amount.toFixed(2)}`;
+    await this.createNotification({
+      type: "expense_decision",
+      recipientRole: "trainer",
+      message: action === "approve"
+        ? `Your ${expense.category} expense for ${formatted} was approved.`
+        : `Your ${expense.category} expense for ${formatted} was rejected: "${reason}"`,
+      relatedTrainerId: expense.trainerId,
+      relatedEntityId: expense.id,
+    });
+    return expense;
+  }
+
   // ─── Users ──────────────────────────────────────────────────────────────────
 
   async getUserByUsername(username: string): Promise<User | null> {

@@ -235,6 +235,18 @@ export interface DataStore {
   listWorkOrdersForPartner(actor: Actor): Promise<EnrichedWorkOrder[]>;
   /** Partner admin approves or denies a pending work order for one of their trainers. */
   respondToWorkOrder(bookingId: string, action: "approve" | "deny", actor: Actor, reason?: string): Promise<Booking>;
+  /** Returns submitted task-tracker weeks for the partner's trainers, enriched with trainer info. */
+  listSubmittedWeeklySubmissionsForPartner(actor: Actor): Promise<Array<WeeklySubmission & { trainer: PublicUser | null }>>;
+  /** Partner admin approves or rejects a trainer's task-tracker weekly submission. */
+  reviewWeeklySubmissionAsPartner(submissionId: string, action: "approve" | "reject", actor: Actor, reason?: string): Promise<WeeklySubmission>;
+  /** Returns submitted timesheet weeks for the partner's trainers, enriched with trainer info. */
+  listSubmittedTimesheetSubmissionsForPartner(actor: Actor): Promise<Array<TimesheetSubmission & { trainer: PublicUser | null }>>;
+  /** Partner admin approves or rejects a trainer's timesheet submission. */
+  reviewTimesheetSubmissionAsPartner(submissionId: string, action: "approve" | "reject", actor: Actor, reason?: string): Promise<TimesheetSubmission>;
+  /** Returns pending expenses for the partner's trainers, enriched with trainer info. */
+  listPendingExpensesForPartner(actor: Actor): Promise<Array<Expense & { trainer: PublicUser | null }>>;
+  /** Partner admin approves or rejects a trainer's expense. */
+  reviewExpenseAsPartner(expenseId: string, action: "approve" | "reject", actor: Actor, reason?: string): Promise<Expense>;
 
   // Users
   getUserByUsername(username: string): Promise<User | null>;
