@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@vercel/postgres": "^0.10.0",
     "bcrypt": "^5.1.1",
     "date-fns": "^4.4.0",
     "jose": "^5.9.6",
