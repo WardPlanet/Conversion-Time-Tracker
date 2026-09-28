@@ -28,7 +28,8 @@ export default function LoginPage() {
         return;
       }
 
-      router.push(data.user.role === "admin" ? "/admin" : "/trainer");
+      const dest = data.user.role === "admin" ? "/admin" : data.user.role === "partner_admin" ? "/partner" : "/trainer";
+      router.push(dest);
       router.refresh();
     } finally {
       setSubmitting(false);

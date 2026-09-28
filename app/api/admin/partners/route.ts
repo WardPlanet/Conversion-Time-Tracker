@@ -7,12 +7,13 @@ export async function GET() {
   const auth = await requireRole("admin");
   if (!auth.session) return auth.response;
 
-  const [partners, trainers] = await Promise.all([
+  const [partners, trainers, partnerAdmins] = await Promise.all([
     store.listPartners(),
     store.listTrainers(),
+    store.listPartnerAdmins(),
   ]);
 
-  return NextResponse.json({ partners, trainers });
+  return NextResponse.json({ partners, trainers, partnerAdmins });
 }
 
 export async function POST(request: Request) {

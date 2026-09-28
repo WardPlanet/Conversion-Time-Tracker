@@ -26,6 +26,15 @@ async function runMigration() {
   // ── Create tables ──────────────────────────────────────────────────────────
 
   await sql`
+    CREATE TABLE IF NOT EXISTS partners (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      contact_email TEXT NOT NULL,
+      active BOOLEAN NOT NULL DEFAULT true
+    )
+  `;
+
+  await sql`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       role TEXT NOT NULL,
@@ -33,9 +42,12 @@ async function runMigration() {
       password_hash TEXT NOT NULL,
       name TEXT NOT NULL,
       email TEXT NOT NULL,
-      active BOOLEAN NOT NULL DEFAULT true
+      active BOOLEAN NOT NULL DEFAULT true,
+      partner_id TEXT
     )
   `;
+
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS partner_id TEXT`;
 
   await sql`
     CREATE TABLE IF NOT EXISTS projects (
@@ -87,9 +99,14 @@ async function runMigration() {
       notes TEXT,
       status_changed_at TEXT NOT NULL,
       rejection_reason TEXT,
-      cancellation_reason TEXT
+      cancellation_reason TEXT,
+      booking_type TEXT,
+      group_id TEXT
     )
   `;
+
+  await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_type TEXT`;
+  await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS group_id TEXT`;
 
   await sql`
     CREATE TABLE IF NOT EXISTS time_clock_events (

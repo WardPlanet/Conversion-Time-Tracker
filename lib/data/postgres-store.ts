@@ -3,6 +3,7 @@ import crypto from "crypto";
 import type {
   User,
   PublicUser,
+  Partner,
   Project,
   Task,
   TaskStatus,
@@ -30,6 +31,9 @@ import type {
 } from "@/lib/types";
 import type {
   Actor,
+  EnrichedWorkOrder,
+  CreatePartnerInput,
+  CreatePartnerAdminInput,
   CreateTaskInput,
   CreateTrainerInput,
   CreateProjectInput,
@@ -95,6 +99,16 @@ function rowToUser(r: Row): User {
     name: r.name,
     email: r.email,
     active: r.active,
+    partnerId: r.partner_id ?? undefined,
+  };
+}
+
+function rowToPartner(r: Row): Partner {
+  return {
+    id: r.id,
+    name: r.name,
+    contactEmail: r.contact_email,
+    active: r.active,
   };
 }
 
@@ -149,6 +163,8 @@ function rowToBooking(r: Row): Booking {
     statusChangedAt: r.status_changed_at,
     rejectionReason: r.rejection_reason ?? undefined,
     cancellationReason: r.cancellation_reason ?? undefined,
+    groupId: r.group_id ?? undefined,
+    bookingType: r.booking_type ?? undefined,
   };
 }
 
@@ -322,6 +338,360 @@ export class PostgresDataStore implements DataStore {
     if (actor.role !== "admin") {
       throw new ForbiddenError(`Only admins can ${action}.`);
     }
+  }
+
+  // ── Partners ───────────────────────────────────────────────────────────────
+
+  private async fetchPartnerAdminUser(actor: Actor): Promise<User> {
+    if (actor.role !== "partner_admin") {
+      throw new ForbiddenError("Only partner admins can access this.");
+    }
+    const result = await sql`SELECT * FROM users WHERE id = ${actor.id} LIMIT 1`;
+    if (!result.rows.length) throw new Error("Partner admin account not found.");
+    const admin = rowToUser(result.rows[0]);
+    if (!admin.partnerId) throw new Error("Partner admin is not assigned to a partner.");
+    return admin;
+  }
+
+  private async fetchPartnerContext(actor: Actor): Promise<{ admin: User; partnerTrainerIds: Set<string> }> {
+    const admin = await this.fetchPartnerAdminUser(actor);
+    const trainerRows = await sql`SELECT id FROM users WHERE role = 'trainer' AND partner_id = ${admin.partnerId}`;
+    const partnerTrainerIds = new Set(trainerRows.rows.map((r) => r.id as string));
+    return { admin, partnerTrainerIds };
+  }
+
+  async listPartners(): Promise<Partner[]> {
+    const result = await sql`SELECT * FROM partners ORDER BY name`;
+    return result.rows.map(rowToPartner);
+  }
+
+  async getPartner(id: string): Promise<Partner | null> {
+    const result = await sql`SELECT * FROM partners WHERE id = ${id} LIMIT 1`;
+    return result.rows.length ? rowToPartner(result.rows[0]) : null;
+  }
+
+  async listPartnerAdmins(): Promise<PublicUser[]> {
+    const result = await sql`SELECT * FROM users WHERE role = 'partner_admin' ORDER BY name`;
+    return result.rows.map((r) => toPublicUser(rowToUser(r)));
+  }
+
+  async createPartner(input: CreatePartnerInput, actor: Actor): Promise<Partner> {
+    this.requireAdmin(actor, "create partners");
+    const id = genId();
+    await sql`
+      INSERT INTO partners (id, name, contact_email, active)
+      VALUES (${id}, ${input.name.trim()}, ${input.contactEmail.trim()}, true)
+    `;
+    const result = await sql`SELECT * FROM partners WHERE id = ${id} LIMIT 1`;
+    return rowToPartner(result.rows[0]);
+  }
+
+  async createPartnerAdmin(input: CreatePartnerAdminInput, actor: Actor): Promise<PublicUser> {
+    this.requireAdmin(actor, "create partner admin accounts");
+    const partnerCheck = await sql`SELECT id FROM partners WHERE id = ${input.partnerId} LIMIT 1`;
+    if (!partnerCheck.rows.length) throw new Error(`Partner "${input.partnerId}" not found.`);
+    const existing = await sql`SELECT id FROM users WHERE username = ${input.username} LIMIT 1`;
+    if (existing.rows.length) throw new Error(`Username "${input.username}" is already taken.`);
+    const id = genId();
+    await sql`
+      INSERT INTO users (id, role, username, password_hash, name, email, active, partner_id)
+      VALUES (${id}, 'partner_admin', ${input.username}, ${input.passwordHash},
+              ${input.name}, ${input.email}, true, ${input.partnerId})
+    `;
+    const result = await sql`SELECT * FROM users WHERE id = ${id} LIMIT 1`;
+    return toPublicUser(rowToUser(result.rows[0]));
+  }
+
+  async assignTrainerToPartner(trainerId: string, partnerId: string | null, actor: Actor): Promise<PublicUser> {
+    this.requireAdmin(actor, "assign trainers to partners");
+    const check = await sql`SELECT id FROM users WHERE id = ${trainerId} AND role = 'trainer' LIMIT 1`;
+    if (!check.rows.length) throw new Error(`Trainer "${trainerId}" not found.`);
+    if (partnerId !== null) {
+      const partnerCheck = await sql`SELECT id FROM partners WHERE id = ${partnerId} LIMIT 1`;
+      if (!partnerCheck.rows.length) throw new Error(`Partner "${partnerId}" not found.`);
+    }
+    await sql`UPDATE users SET partner_id = ${partnerId} WHERE id = ${trainerId}`;
+    const result = await sql`SELECT * FROM users WHERE id = ${trainerId} LIMIT 1`;
+    return toPublicUser(rowToUser(result.rows[0]));
+  }
+
+  async listWorkOrdersForPartner(actor: Actor): Promise<EnrichedWorkOrder[]> {
+    const admin = await this.fetchPartnerAdminUser(actor);
+    const partnerId = admin.partnerId!;
+
+    const [bookingRows, trainerRows, projectRows, officeRows] = await Promise.all([
+      sql`
+        SELECT b.* FROM bookings b
+        JOIN users u ON u.id = b.trainer_id
+        WHERE u.partner_id = ${partnerId}
+          AND (b.booking_type IS NULL OR b.booking_type != 'travel')
+      `,
+      sql`SELECT * FROM users WHERE role = 'trainer' AND partner_id = ${partnerId}`,
+      sql`SELECT * FROM projects`,
+      sql`SELECT * FROM offices`,
+    ]);
+
+    const trainersById = new Map(trainerRows.rows.map((r) => [r.id as string, toPublicUser(rowToUser(r))]));
+    const projectsById = new Map(projectRows.rows.map((r) => [r.id as string, rowToProject(r)]));
+    const officesById = new Map(officeRows.rows.map((r) => [r.id as string, rowToOffice(r)]));
+
+    return bookingRows.rows.map((r) => {
+      const b = rowToBooking(r);
+      return {
+        ...b,
+        trainer: trainersById.get(b.trainerId) ?? null,
+        project: projectsById.get(b.projectId) ?? null,
+        office: officesById.get(b.officeId) ?? null,
+      };
+    });
+  }
+
+  async respondToWorkOrder(
+    bookingId: string,
+    action: "approve" | "deny",
+    actor: Actor,
+    reason?: string
+  ): Promise<Booking> {
+    const admin = await this.fetchPartnerAdminUser(actor);
+    const partnerId = admin.partnerId!;
+
+    const bookingCheck = await sql`SELECT * FROM bookings WHERE id = ${bookingId} LIMIT 1`;
+    if (!bookingCheck.rows.length) throw new Error(`Booking "${bookingId}" not found.`);
+    const booking = rowToBooking(bookingCheck.rows[0]);
+
+    const trainerCheck = await sql`SELECT * FROM users WHERE id = ${booking.trainerId} LIMIT 1`;
+    if (!trainerCheck.rows.length || trainerCheck.rows[0].partner_id !== partnerId) {
+      throw new ForbiddenError("This work order does not belong to your partner.");
+    }
+
+    if (booking.status !== "pending") {
+      throw new Error("Only pending work orders can be approved or denied.");
+    }
+
+    const newStatus = action === "approve" ? "accepted" : "rejected";
+    const statusChangedAt = new Date().toISOString();
+    const rejectionReason = action === "deny" && reason ? reason.trim() : null;
+
+    await sql`
+      UPDATE bookings
+      SET status = ${newStatus}, status_changed_at = ${statusChangedAt}, rejection_reason = ${rejectionReason}
+      WHERE id = ${bookingId}
+    `;
+
+    if (booking.groupId) {
+      await sql`
+        UPDATE bookings
+        SET status = ${newStatus}, status_changed_at = ${statusChangedAt}, rejection_reason = ${rejectionReason}
+        WHERE group_id = ${booking.groupId} AND id != ${bookingId} AND status = 'pending'
+      `;
+    }
+
+    await this.createNotification({
+      type: action === "approve" ? "work_order_approved" : "work_order_denied",
+      recipientRole: "admin",
+      message: `${admin.name} ${action === "approve" ? "approved" : "denied"} work order "${booking.title}" for ${trainerCheck.rows[0].name}.`,
+      relatedTrainerId: booking.trainerId,
+      relatedEntityId: booking.id,
+    });
+
+    const result = await sql`SELECT * FROM bookings WHERE id = ${bookingId} LIMIT 1`;
+    return rowToBooking(result.rows[0]);
+  }
+
+  async listSubmittedWeeklySubmissionsForPartner(
+    actor: Actor
+  ): Promise<Array<WeeklySubmission & { trainer: PublicUser | null }>> {
+    const { partnerTrainerIds } = await this.fetchPartnerContext(actor);
+    if (!partnerTrainerIds.size) return [];
+
+    const [submissionRows, trainerRows] = await Promise.all([
+      sql`SELECT * FROM weekly_submissions WHERE status = 'submitted'`,
+      sql`SELECT * FROM users WHERE role = 'trainer'`,
+    ]);
+
+    const trainersById = new Map(
+      trainerRows.rows
+        .filter((r) => partnerTrainerIds.has(r.id))
+        .map((r) => [r.id as string, toPublicUser(rowToUser(r))])
+    );
+
+    return submissionRows.rows
+      .filter((r) => partnerTrainerIds.has(r.trainer_id))
+      .map((r) => ({ ...rowToWeeklySubmission(r), trainer: trainersById.get(r.trainer_id) ?? null }));
+  }
+
+  async reviewWeeklySubmissionAsPartner(
+    submissionId: string,
+    action: "approve" | "reject",
+    actor: Actor,
+    reason?: string
+  ): Promise<WeeklySubmission> {
+    const { admin, partnerTrainerIds } = await this.fetchPartnerContext(actor);
+
+    const check = await sql`SELECT * FROM weekly_submissions WHERE id = ${submissionId} LIMIT 1`;
+    if (!check.rows.length) throw new Error(`Submission "${submissionId}" not found.`);
+    const submission = rowToWeeklySubmission(check.rows[0]);
+
+    if (!partnerTrainerIds.has(submission.trainerId)) {
+      throw new ForbiddenError("This submission does not belong to your partner.");
+    }
+    if (submission.status !== "submitted") throw new Error("Only submitted weeks can be approved or rejected.");
+    if (action === "reject" && !reason?.trim()) throw new Error("A reason is required to reject a submission.");
+
+    const newStatus = action === "approve" ? "approved" : "rejected";
+    const reviewedAt = new Date().toISOString();
+    const trimmedReason = action === "reject" ? reason!.trim() : null;
+
+    await sql`
+      UPDATE weekly_submissions
+      SET status = ${newStatus}, reviewed_at = ${reviewedAt},
+          reviewed_by_admin_id = ${admin.id}, rejection_reason = ${trimmedReason}
+      WHERE id = ${submissionId}
+    `;
+
+    await this.createNotification({
+      type: "submission_decision",
+      recipientRole: "trainer",
+      message: action === "approve"
+        ? `Your Task Tracker week of ${formatWeekLabel(submission.weekStartDate)} was approved.`
+        : `Your Task Tracker week of ${formatWeekLabel(submission.weekStartDate)} was rejected: "${reason}"`,
+      relatedTrainerId: submission.trainerId,
+      relatedEntityId: submission.id,
+    });
+
+    const result = await sql`SELECT * FROM weekly_submissions WHERE id = ${submissionId} LIMIT 1`;
+    return rowToWeeklySubmission(result.rows[0]);
+  }
+
+  async listSubmittedTimesheetSubmissionsForPartner(
+    actor: Actor
+  ): Promise<Array<TimesheetSubmission & { trainer: PublicUser | null }>> {
+    const { partnerTrainerIds } = await this.fetchPartnerContext(actor);
+    if (!partnerTrainerIds.size) return [];
+
+    const [submissionRows, trainerRows] = await Promise.all([
+      sql`SELECT * FROM timesheet_submissions WHERE status = 'submitted'`,
+      sql`SELECT * FROM users WHERE role = 'trainer'`,
+    ]);
+
+    const trainersById = new Map(
+      trainerRows.rows
+        .filter((r) => partnerTrainerIds.has(r.id))
+        .map((r) => [r.id as string, toPublicUser(rowToUser(r))])
+    );
+
+    return submissionRows.rows
+      .filter((r) => partnerTrainerIds.has(r.trainer_id))
+      .map((r) => ({ ...rowToTimesheetSubmission(r), trainer: trainersById.get(r.trainer_id) ?? null }));
+  }
+
+  async reviewTimesheetSubmissionAsPartner(
+    submissionId: string,
+    action: "approve" | "reject",
+    actor: Actor,
+    reason?: string
+  ): Promise<TimesheetSubmission> {
+    const { admin, partnerTrainerIds } = await this.fetchPartnerContext(actor);
+
+    const check = await sql`SELECT * FROM timesheet_submissions WHERE id = ${submissionId} LIMIT 1`;
+    if (!check.rows.length) throw new Error(`Timesheet submission "${submissionId}" not found.`);
+    const submission = rowToTimesheetSubmission(check.rows[0]);
+
+    if (!partnerTrainerIds.has(submission.trainerId)) {
+      throw new ForbiddenError("This submission does not belong to your partner.");
+    }
+    if (submission.status !== "submitted") throw new Error("Only submitted timesheets can be approved or rejected.");
+    if (action === "reject" && !reason?.trim()) throw new Error("A reason is required to reject a timesheet.");
+
+    const newStatus = action === "approve" ? "approved" : "rejected";
+    const reviewedAt = new Date().toISOString();
+    const trimmedReason = action === "reject" ? reason!.trim() : null;
+
+    await sql`
+      UPDATE timesheet_submissions
+      SET status = ${newStatus}, reviewed_at = ${reviewedAt},
+          reviewed_by_admin_id = ${admin.id}, rejection_reason = ${trimmedReason}
+      WHERE id = ${submissionId}
+    `;
+
+    await this.createNotification({
+      type: "timesheet_submission_decision",
+      recipientRole: "trainer",
+      message: action === "approve"
+        ? `Your timesheet for the week of ${formatWeekLabel(submission.weekStartDate)} was approved.`
+        : `Your timesheet for the week of ${formatWeekLabel(submission.weekStartDate)} was rejected: "${reason}"`,
+      relatedTrainerId: submission.trainerId,
+      relatedEntityId: submission.id,
+    });
+
+    const result = await sql`SELECT * FROM timesheet_submissions WHERE id = ${submissionId} LIMIT 1`;
+    return rowToTimesheetSubmission(result.rows[0]);
+  }
+
+  async listPendingExpensesForPartner(
+    actor: Actor
+  ): Promise<Array<Expense & { trainer: PublicUser | null }>> {
+    const { partnerTrainerIds } = await this.fetchPartnerContext(actor);
+    if (!partnerTrainerIds.size) return [];
+
+    const [expenseRows, trainerRows] = await Promise.all([
+      sql`SELECT * FROM expenses WHERE status = 'pending'`,
+      sql`SELECT * FROM users WHERE role = 'trainer'`,
+    ]);
+
+    const trainersById = new Map(
+      trainerRows.rows
+        .filter((r) => partnerTrainerIds.has(r.id))
+        .map((r) => [r.id as string, toPublicUser(rowToUser(r))])
+    );
+
+    return expenseRows.rows
+      .filter((r) => partnerTrainerIds.has(r.trainer_id))
+      .map((r) => ({ ...rowToExpense(r), trainer: trainersById.get(r.trainer_id) ?? null }));
+  }
+
+  async reviewExpenseAsPartner(
+    expenseId: string,
+    action: "approve" | "reject",
+    actor: Actor,
+    reason?: string
+  ): Promise<Expense> {
+    const { admin, partnerTrainerIds } = await this.fetchPartnerContext(actor);
+
+    const check = await sql`SELECT * FROM expenses WHERE id = ${expenseId} LIMIT 1`;
+    if (!check.rows.length) throw new Error(`Expense "${expenseId}" not found.`);
+    const expense = rowToExpense(check.rows[0]);
+
+    if (!partnerTrainerIds.has(expense.trainerId)) {
+      throw new ForbiddenError("This expense does not belong to your partner.");
+    }
+    if (expense.status !== "pending") throw new Error("Only pending expenses can be approved or rejected.");
+    if (action === "reject" && !reason?.trim()) throw new Error("A reason is required to reject an expense.");
+
+    const newStatus = action === "approve" ? "approved" : "rejected";
+    const reviewedAt = new Date().toISOString();
+    const trimmedReason = action === "reject" ? reason!.trim() : null;
+
+    await sql`
+      UPDATE expenses
+      SET status = ${newStatus}, reviewed_at = ${reviewedAt},
+          reviewed_by_admin_id = ${admin.id}, rejection_reason = ${trimmedReason}
+      WHERE id = ${expenseId}
+    `;
+
+    const formatted = `$${expense.amount.toFixed(2)}`;
+    await this.createNotification({
+      type: "expense_decision",
+      recipientRole: "trainer",
+      message: action === "approve"
+        ? `Your ${expense.category} expense for ${formatted} was approved.`
+        : `Your ${expense.category} expense for ${formatted} was rejected: "${reason}"`,
+      relatedTrainerId: expense.trainerId,
+      relatedEntityId: expense.id,
+    });
+
+    const result = await sql`SELECT * FROM expenses WHERE id = ${expenseId} LIMIT 1`;
+    return rowToExpense(result.rows[0]);
   }
 
   // ── Users ──────────────────────────────────────────────────────────────────
@@ -547,12 +917,14 @@ export class PostgresDataStore implements DataStore {
     await sql`
       INSERT INTO bookings
         (id, trainer_id, project_id, office_id, title, start_time, end_time,
-         location, billable, billable_set_by_admin, status, notes, status_changed_at)
+         location, billable, billable_set_by_admin, status, notes, status_changed_at,
+         booking_type, group_id)
       VALUES
         (${id}, ${input.trainerId}, ${input.projectId}, ${input.officeId},
          ${input.title}, ${input.startTime}, ${input.endTime},
          ${input.location}, ${input.billable}, true, 'pending',
-         ${input.notes ?? null}, ${statusChangedAt})
+         ${input.notes ?? null}, ${statusChangedAt},
+         ${input.bookingType ?? null}, ${input.groupId ?? null})
     `;
 
     const result = await sql`SELECT * FROM bookings WHERE id = ${id} LIMIT 1`;

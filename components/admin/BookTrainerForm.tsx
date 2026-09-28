@@ -58,6 +58,13 @@ function formatShortDate(dateStr: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+function formatTime12h(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const hour = h % 12 === 0 ? 12 : h % 12;
+  return `${hour}:${String(m).padStart(2, "0")} ${period}`;
+}
+
 /**
  * Booking creation form for the admin Scheduling calendar. Supports
  * multi-day date ranges and an "All day" toggle. Always adds one travel day
@@ -395,7 +402,7 @@ export function BookTrainerForm({
                 <span className="h-2 w-2 shrink-0 rounded-full bg-brand-blue" />
                 <span>
                   {formatShortDate(d)}
-                  {form.allDay ? " — All day" : ` · ${form.startTime} – ${form.endTime}`}
+                  {form.allDay ? " — All day" : ` · ${formatTime12h(form.startTime)} – ${formatTime12h(form.endTime)}`}
                 </span>
               </li>
             ))}

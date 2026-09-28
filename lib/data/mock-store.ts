@@ -615,6 +615,10 @@ export class MockDataStore implements DataStore {
     return this.partners.find((p) => p.id === id) ?? null;
   }
 
+  async listPartnerAdmins(): Promise<PublicUser[]> {
+    return this.users.filter((u) => u.role === "partner_admin").map(toPublicUser);
+  }
+
   async createPartner(input: CreatePartnerInput, actor: Actor): Promise<Partner> {
     this.requireAdmin(actor, "create partners");
     const partner: Partner = {
@@ -719,12 +723,15 @@ export class MockDataStore implements DataStore {
       booking.rejectionReason = reason;
     }
 
-    // Auto-update travel day bookings in the same group
+    // Auto-update all other bookings in the same group (travel + other training days)
     if (booking.groupId) {
       for (const b of this.bookings) {
-        if (b.groupId === booking.groupId && b.bookingType === "travel" && b.status === "pending") {
+        if (b.groupId === booking.groupId && b.id !== bookingId && b.status === "pending") {
           b.status = newStatus;
           b.statusChangedAt = booking.statusChangedAt;
+          if (action === "deny" && reason) {
+            b.rejectionReason = reason;
+          }
         }
       }
     }
