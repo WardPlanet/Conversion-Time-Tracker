@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Plane } from "lucide-react";
 import type { Booking, Project } from "@/lib/types";
 import { formatTime } from "@/lib/format";
 import { STATUS_CHIP_STYLES } from "@/components/calendar/BookingChip";
@@ -23,6 +23,25 @@ export function WeekBookingBlock({
   trainerName?: string;
   onClick: () => void;
 }) {
+  if (booking.bookingType === "travel") {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title={booking.title}
+        className="flex h-full w-full flex-col items-start justify-center gap-0.5 overflow-hidden rounded bg-slate-100 px-1.5 py-1 text-left text-xs leading-tight text-slate-600 shadow-sm hover:bg-slate-200 border border-slate-300 border-l-[3px] border-l-slate-400"
+      >
+        <span className="flex w-full items-center gap-1 font-medium">
+          <Plane className="h-3 w-3 shrink-0 text-slate-500" />
+          <span className="truncate">Travel day</span>
+        </span>
+        <span className="w-full truncate text-slate-500">
+          {trainerName ?? ""}
+        </span>
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -41,7 +60,9 @@ export function WeekBookingBlock({
             />
           )
         )}
-        <span className="truncate">{formatTime(booking.startTime)}</span>
+        <span className="truncate">
+          {booking.allDay ? "All day" : formatTime(booking.startTime)}
+        </span>
       </span>
       <span className="w-full truncate text-brand-darkBlue/70">
         {trainerName ? `${trainerName} · ` : ""}

@@ -1,6 +1,7 @@
 import type {
   User,
   PublicUser,
+  Partner,
   Project,
   Task,
   TaskStatus,
@@ -73,6 +74,27 @@ export interface CreateTrainerInput {
   passwordHash: string;
   name: string;
   email: string;
+  partnerId?: string;
+}
+
+export interface CreatePartnerInput {
+  name: string;
+  contactEmail: string;
+}
+
+export interface CreatePartnerAdminInput {
+  username: string;
+  passwordHash: string;
+  name: string;
+  email: string;
+  partnerId: string;
+}
+
+/** A booking enriched with the trainer, project, and office records for display in the partner portal. */
+export interface EnrichedWorkOrder extends Booking {
+  trainer: PublicUser | null;
+  project: Project | null;
+  office: Office | null;
 }
 
 export interface CreateTaskInput {
@@ -122,6 +144,9 @@ export interface CreateBookingInput {
   location: BookingLocation;
   billable: BillableStatus;
   notes?: string;
+  allDay?: boolean;
+  bookingType?: "training" | "travel";
+  groupId?: string;
 }
 
 export interface CreateTaskEntryInput {
@@ -200,6 +225,29 @@ export interface CreateUnavailabilityBlockInput {
  * implementation can enforce role rules itself, not just the UI.
  */
 export interface DataStore {
+  // Partners
+  listPartners(): Promise<Partner[]>;
+  getPartner(id: string): Promise<Partner | null>;
+  createPartner(input: CreatePartnerInput, actor: Actor): Promise<Partner>;
+  createPartnerAdmin(input: CreatePartnerAdminInput, actor: Actor): Promise<PublicUser>;
+  assignTrainerToPartner(trainerId: string, partnerId: string | null, actor: Actor): Promise<PublicUser>;
+  /** Returns all training-type bookings for trainers belonging to the actor's partner. */
+  listWorkOrdersForPartner(actor: Actor): Promise<EnrichedWorkOrder[]>;
+  /** Partner admin approves or denies a pending work order for one of their trainers. */
+  respondToWorkOrder(bookingId: string, action: "approve" | "deny", actor: Actor, reason?: string): Promise<Booking>;
+  /** Returns submitted task-tracker weeks for the partner's trainers, enriched with trainer info. */
+  listSubmittedWeeklySubmissionsForPartner(actor: Actor): Promise<Array<WeeklySubmission & { trainer: PublicUser | null }>>;
+  /** Partner admin approves or rejects a trainer's task-tracker weekly submission. */
+  reviewWeeklySubmissionAsPartner(submissionId: string, action: "approve" | "reject", actor: Actor, reason?: string): Promise<WeeklySubmission>;
+  /** Returns submitted timesheet weeks for the partner's trainers, enriched with trainer info. */
+  listSubmittedTimesheetSubmissionsForPartner(actor: Actor): Promise<Array<TimesheetSubmission & { trainer: PublicUser | null }>>;
+  /** Partner admin approves or rejects a trainer's timesheet submission. */
+  reviewTimesheetSubmissionAsPartner(submissionId: string, action: "approve" | "reject", actor: Actor, reason?: string): Promise<TimesheetSubmission>;
+  /** Returns pending expenses for the partner's trainers, enriched with trainer info. */
+  listPendingExpensesForPartner(actor: Actor): Promise<Array<Expense & { trainer: PublicUser | null }>>;
+  /** Partner admin approves or rejects a trainer's expense. */
+  reviewExpenseAsPartner(expenseId: string, action: "approve" | "reject", actor: Actor, reason?: string): Promise<Expense>;
+
   // Users
   getUserByUsername(username: string): Promise<User | null>;
   getUserById(id: string): Promise<User | null>;

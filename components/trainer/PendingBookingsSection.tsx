@@ -16,7 +16,13 @@ import { DashboardCard } from "@/components/trainer/DashboardCard";
  * booking is next automatically takes its place. Renders nothing at all
  * once there's none left, so the left column doesn't reserve empty space.
  */
-export function PendingBookingsSection({ projects }: { projects: Project[] }) {
+export function PendingBookingsSection({
+  projects,
+  isPartnerManaged = false,
+}: {
+  projects: Project[];
+  isPartnerManaged?: boolean;
+}) {
   const { nextPendingBooking, respond, pendingActionId, error } =
     useBookingsContext();
   const [rejecting, setRejecting] = useState(false);
@@ -43,22 +49,28 @@ export function PendingBookingsSection({ projects }: { projects: Project[] }) {
           <LocationTag location={booking.location} />
           <BillableTag billable={booking.billable} />
         </div>
-        <div className="mt-3 flex gap-2">
-          <button
-            onClick={() => respond(booking.id, "accepted")}
-            disabled={isPending}
-            className="rounded-md bg-brand-blue px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-darkBlue disabled:opacity-50"
-          >
-            Accept
-          </button>
-          <button
-            onClick={() => setRejecting(true)}
-            disabled={isPending}
-            className="rounded-md border border-brand-darkBlue/20 px-3 py-1.5 text-sm text-brand-darkBlue hover:bg-brand-blueWater disabled:opacity-50"
-          >
-            Reject
-          </button>
-        </div>
+        {isPartnerManaged ? (
+          <p className="mt-3 text-xs text-brand-darkBlue/50 italic">
+            Awaiting approval from your partner manager.
+          </p>
+        ) : (
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={() => respond(booking.id, "accepted")}
+              disabled={isPending}
+              className="rounded-md bg-brand-blue px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-darkBlue disabled:opacity-50"
+            >
+              Accept
+            </button>
+            <button
+              onClick={() => setRejecting(true)}
+              disabled={isPending}
+              className="rounded-md border border-brand-darkBlue/20 px-3 py-1.5 text-sm text-brand-darkBlue hover:bg-brand-blueWater disabled:opacity-50"
+            >
+              Reject
+            </button>
+          </div>
+        )}
       </div>
 
       <RejectReasonModal

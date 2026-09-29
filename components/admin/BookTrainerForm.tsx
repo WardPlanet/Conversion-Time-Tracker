@@ -20,20 +20,49 @@ function emptyForm(defaultDate?: string) {
     projectId: "",
     officeId: "",
     title: "",
-    date: defaultDate ?? "",
+    startDate: defaultDate ?? "",
+    endDate: defaultDate ?? "",
+    allDay: false,
     startTime: "09:00",
-    endTime: "10:00",
+    endTime: "17:00",
     location: "on_site" as BookingLocation,
     billable: "billable" as BillableStatus,
     notes: "",
   };
 }
 
+/** Returns every "YYYY-MM-DD" date in [start, end] inclusive. */
+function getDatesInRange(start: string, end: string): string[] {
+  if (!start || !end) return [];
+  const dates: string[] = [];
+  // Use noon to avoid any midnight DST edge cases
+  const current = new Date(`${start}T12:00:00`);
+  const last = new Date(`${end}T12:00:00`);
+  if (current > last) return [];
+  while (current <= last) {
+    dates.push(current.toISOString().slice(0, 10));
+    current.setDate(current.getDate() + 1);
+  }
+  return dates;
+}
+
+/** Returns the date N days offset from a "YYYY-MM-DD" string. */
+function offsetDate(date: string, days: number): string {
+  const d = new Date(`${date}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function formatShortDate(dateStr: string): string {
+  const d = new Date(`${dateStr}T12:00:00`);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 /**
- * Booking creation form for the admin Scheduling calendar. On a 409
- * conflict response, shows the conflicting booking inline and keeps the
- * form filled in so the admin can adjust the time or trainer and resubmit —
- * it never closes or clears on a conflict.
+ * Booking creation form for the admin Scheduling calendar. Supports
+ * multi-day date ranges and an "All day" toggle. Always adds one travel day
+ * before and one after the training block. On a 409 conflict response,
+ * shows the conflicting booking inline and keeps the form filled in.
  */
 export function BookTrainerForm({
   trainers,
@@ -46,7 +75,6 @@ export function BookTrainerForm({
   trainers: PublicUser[];
   projects: Project[];
   offices: Office[];
-  /** Every trainer's unavailability blocks — filtered by `form.trainerId` internally to drive the soft "book anyway?" warning below. Not a hard restriction, unlike the 409 conflict check. */
   unavailabilityBlocks: UnavailabilityBlock[];
   defaultDate?: string; // "YYYY-MM-DD"
   onCreated: () => void;
@@ -65,14 +93,26 @@ export function BookTrainerForm({
     (o) => o.projectId === form.projectId
   );
 
-  const overlapKey = `${form.trainerId}|${form.date}|${form.startTime}|${form.endTime}`;
+  const trainingDates = getDatesInRange(form.startDate, form.endDate);
+  const travelBeforeDate = form.startDate ? offsetDate(form.startDate, -1) : "";
+  const travelAfterDate = form.endDate ? offsetDate(form.endDate, 1) : "";
+
+  const overlapKey = `${form.trainerId}|${form.startDate}|${form.endDate}|${form.startTime}|${form.endTime}|${form.allDay}`;
+  const trainerUnavailability = form.trainerId
+    ? unavailabilityBlocks.filter((b) => b.trainerId === form.trainerId)
+    : [];
   const overlappingBlock =
-    form.trainerId && form.date
-      ? findOverlappingUnavailability(
-          unavailabilityBlocks.filter((b) => b.trainerId === form.trainerId),
-          new Date(`${form.date}T${form.startTime}`).toISOString(),
-          new Date(`${form.date}T${form.endTime}`).toISOString()
-        )
+    form.trainerId && trainingDates.length > 0
+      ? trainingDates.reduce<UnavailabilityBlock | null>((found, date) => {
+          if (found) return found;
+          const start = new Date(
+            `${date}T${form.allDay ? "09:00" : form.startTime}`
+          ).toISOString();
+          const end = new Date(
+            `${date}T${form.allDay ? "17:00" : form.endTime}`
+          ).toISOString();
+          return findOverlappingUnavailability(trainerUnavailability, start, end);
+        }, null)
       : null;
   const overlapAcknowledged = acknowledgedOverlapKey === overlapKey;
   const selectedTrainerName = trainers.find((t) => t.id === form.trainerId)?.name;
@@ -82,17 +122,12 @@ export function BookTrainerForm({
     setError(null);
     setConflict(null);
 
-    if (overlappingBlock && !overlapAcknowledged) {
-      return;
-    }
+    if (overlappingBlock && !overlapAcknowledged) return;
 
     setSubmitting(true);
 
     try {
-      const startTime = new Date(
-        `${form.date}T${form.startTime}`
-      ).toISOString();
-      const endTime = new Date(`${form.date}T${form.endTime}`).toISOString();
+      const groupId = crypto.randomUUID();
 
       const response = await fetch("/api/admin/bookings", {
         method: "POST",
@@ -102,11 +137,16 @@ export function BookTrainerForm({
           projectId: form.projectId,
           officeId: form.officeId,
           title: form.title,
-          startTime,
-          endTime,
+          trainingDates,
+          allDay: form.allDay,
+          startTime: form.startTime,
+          endTime: form.endTime,
           location: form.location,
           billable: form.billable,
           notes: form.notes || undefined,
+          groupId,
+          travelBeforeDate: travelBeforeDate || undefined,
+          travelAfterDate: travelAfterDate || undefined,
         }),
       });
       const data = await response.json();
@@ -178,7 +218,7 @@ export function BookTrainerForm({
 
       <label className="block sm:col-span-2">
         <span className="block text-sm font-medium text-brand-darkBlue/80">
-          Office
+          OID
         </span>
         <select
           required
@@ -190,7 +230,7 @@ export function BookTrainerForm({
           className="mt-1 block w-full rounded-md border border-brand-darkBlue/20 px-3 py-2 text-sm shadow-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue disabled:bg-brand-blueWater/50 disabled:text-brand-darkBlue/40"
         >
           <option value="">
-            {form.projectId ? "Select an office" : "Select a project first"}
+            {form.projectId ? "Select an OID" : "Select a project first"}
           </option>
           {officesForSelectedProject.map((o) => (
             <option key={o.id} value={o.id}>
@@ -213,38 +253,80 @@ export function BookTrainerForm({
         />
       </label>
 
-      <label className="block sm:col-span-2">
-        <span className="block text-sm font-medium text-brand-darkBlue/80">Date</span>
+      {/* Date range */}
+      <label className="block">
+        <span className="block text-sm font-medium text-brand-darkBlue/80">
+          Start date
+        </span>
         <input
           type="date"
           required
-          value={form.date}
-          onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+          value={form.startDate}
+          onChange={(e) => {
+            const startDate = e.target.value;
+            setForm((f) => ({
+              ...f,
+              startDate,
+              // Keep endDate >= startDate
+              endDate: f.endDate && f.endDate >= startDate ? f.endDate : startDate,
+            }));
+          }}
           className="mt-1 block w-full rounded-md border border-brand-darkBlue/20 px-3 py-2 text-sm shadow-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
         />
       </label>
 
-      <div className="grid grid-cols-2 gap-4 sm:col-span-2">
-        <label className="block">
-          <span className="block text-sm font-medium text-brand-darkBlue/80">
-            Start
-          </span>
-          <TimeSelect
-            label="Start time"
-            value={form.startTime}
-            onChange={(startTime) => setForm((f) => ({ ...f, startTime }))}
+      <label className="block">
+        <span className="block text-sm font-medium text-brand-darkBlue/80">
+          End date
+        </span>
+        <input
+          type="date"
+          required
+          min={form.startDate}
+          value={form.endDate}
+          onChange={(e) =>
+            setForm((f) => ({ ...f, endDate: e.target.value }))
+          }
+          className="mt-1 block w-full rounded-md border border-brand-darkBlue/20 px-3 py-2 text-sm shadow-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+        />
+      </label>
+
+      {/* All day toggle + time pickers */}
+      <div className="sm:col-span-2">
+        <label className="inline-flex cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            checked={form.allDay}
+            onChange={(e) => setForm((f) => ({ ...f, allDay: e.target.checked }))}
+            className="h-4 w-4 rounded border-brand-darkBlue/20 text-brand-blue"
           />
+          <span className="text-sm font-medium text-brand-darkBlue/80">All day</span>
         </label>
-        <label className="block">
-          <span className="block text-sm font-medium text-brand-darkBlue/80">
-            End
-          </span>
-          <TimeSelect
-            label="End time"
-            value={form.endTime}
-            onChange={(endTime) => setForm((f) => ({ ...f, endTime }))}
-          />
-        </label>
+
+        {!form.allDay && (
+          <div className="mt-3 grid grid-cols-2 gap-4">
+            <label className="block">
+              <span className="block text-sm font-medium text-brand-darkBlue/80">
+                Start
+              </span>
+              <TimeSelect
+                label="Start time"
+                value={form.startTime}
+                onChange={(startTime) => setForm((f) => ({ ...f, startTime }))}
+              />
+            </label>
+            <label className="block">
+              <span className="block text-sm font-medium text-brand-darkBlue/80">
+                End
+              </span>
+              <TimeSelect
+                label="End time"
+                value={form.endTime}
+                onChange={(endTime) => setForm((f) => ({ ...f, endTime }))}
+              />
+            </label>
+          </div>
+        )}
       </div>
 
       <label className="block">
@@ -297,12 +379,45 @@ export function BookTrainerForm({
         />
       </label>
 
+      {/* Schedule preview */}
+      {trainingDates.length > 0 && (
+        <div className="sm:col-span-2 rounded-md border border-brand-darkBlue/10 bg-brand-blueWater/50 px-3 py-2 text-sm text-brand-darkBlue/80">
+          <p className="font-medium text-brand-darkBlue">Schedule preview</p>
+          <ul className="mt-1 space-y-0.5">
+            {travelBeforeDate && (
+              <li className="flex items-center gap-1.5">
+                <span className="h-2 w-2 shrink-0 rounded-full bg-slate-400" />
+                <span>{formatShortDate(travelBeforeDate)} — Travel day</span>
+              </li>
+            )}
+            {trainingDates.map((d) => (
+              <li key={d} className="flex items-center gap-1.5">
+                <span className="h-2 w-2 shrink-0 rounded-full bg-brand-blue" />
+                <span>
+                  {formatShortDate(d)}
+                  {form.allDay ? " — All day" : ` · ${form.startTime} – ${form.endTime}`}
+                </span>
+              </li>
+            ))}
+            {travelAfterDate && (
+              <li className="flex items-center gap-1.5">
+                <span className="h-2 w-2 shrink-0 rounded-full bg-slate-400" />
+                <span>{formatShortDate(travelAfterDate)} — Travel day</span>
+              </li>
+            )}
+          </ul>
+          <p className="mt-1.5 text-xs text-brand-darkBlue/60">
+            {trainingDates.length} training day{trainingDates.length !== 1 ? "s" : ""} + 2 travel days
+          </p>
+        </div>
+      )}
+
       {overlappingBlock && !conflict && (
         <div className="sm:col-span-2 rounded-md border border-brand-orange/30 bg-brand-orange/10 p-3 text-sm text-brand-orange">
           <p className="font-medium">Trainer marked unavailable</p>
           <p className="mt-1">
-            {selectedTrainerName ?? "This trainer"} has marked this time as
-            unavailable
+            {selectedTrainerName ?? "This trainer"} has marked one or more of
+            these dates as unavailable
             {overlappingBlock.reason ? ` ("${overlappingBlock.reason}")` : ""}.
             You can still book it.
           </p>
@@ -326,7 +441,7 @@ export function BookTrainerForm({
           <p className="mt-1">
             This trainer already has &quot;{conflict.title}&quot; booked{" "}
             {formatDateRange(conflict.startTime, conflict.endTime)}. Adjust
-            the time or pick a different trainer.
+            the dates/time or pick a different trainer.
           </p>
         </div>
       )}

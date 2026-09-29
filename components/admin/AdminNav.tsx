@@ -5,6 +5,7 @@ import {
   CalendarClock,
   FolderKanban,
   ClipboardCheck,
+  Building2,
 } from "lucide-react";
 import { Sidebar, type SidebarNavItem } from "@/components/nav/Sidebar";
 import { AdminNotificationBell } from "@/components/admin/AdminNotificationBell";
@@ -14,6 +15,7 @@ const NAV_ITEMS: SidebarNavItem[] = [
   { href: "/admin/scheduling", label: "Scheduling", icon: CalendarClock },
   { href: "/admin/projects", label: "Projects", icon: FolderKanban },
   { href: "/admin/submissions", label: "Submissions", icon: ClipboardCheck },
+  { href: "/admin/partners", label: "Partners", icon: Building2 },
 ];
 
 export function AdminNav({ userName }: { userName: string }) {

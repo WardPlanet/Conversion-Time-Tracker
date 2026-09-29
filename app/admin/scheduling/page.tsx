@@ -162,11 +162,14 @@ export default function AdminSchedulingPage() {
     () => groupByLocalDate(visibleBookings, (b) => new Date(b.startTime)),
     [visibleBookings]
   );
-  // Widens past the 7am–7pm default only if real data falls outside it, and
-  // ignores cancelled bookings so a stray old outlier can't skew the grid.
+  // Widens past the 7am–7pm default only if real data falls outside it.
+  // Excludes cancelled and all-day bookings (travel/all-day training) so they
+  // don't force the time grid to span 0–24 hours.
   const hourRange = useMemo(
     () =>
-      getHourRangeForBookings(bookings.filter((b) => b.status !== "cancelled")),
+      getHourRangeForBookings(
+        bookings.filter((b) => b.status !== "cancelled" && !b.allDay)
+      ),
     [bookings]
   );
   function trainerNameFor(trainerId: string): string {
@@ -226,10 +229,10 @@ export default function AdminSchedulingPage() {
     setViewMode("day");
   }
 
-  /** Full-day unavailability blocks render as chips in the week grid's "All day" row instead of being time-positioned. */
+  /** All-day items for the week grid: full-day unavailability blocks + allDay bookings (travel days and all-day training). */
   function getWeekAllDayItems(day: Date): WeekAllDayItem[] {
     const dateStr = toLocalDateString(day);
-    return blocksForDate(visibleUnavailabilityBlocks, dateStr)
+    const unavailItems = blocksForDate(visibleUnavailabilityBlocks, dateStr)
       .filter(isFullDayBlock)
       .map((block) => ({
         key: `unavailability-${block.id}-${dateStr}`,
@@ -241,12 +244,29 @@ export default function AdminSchedulingPage() {
           />
         ),
       }));
+    const allDayBookings = (bookingsByDay.get(dateStr) ?? []).filter(
+      (b) => b.allDay
+    );
+    const bookingItems = allDayBookings.map((booking) => ({
+      key: `booking-allday-${booking.id}`,
+      render: () => (
+        <BookingChip
+          booking={booking}
+          project={booking.project}
+          label={booking.trainer?.name}
+          onClick={() => setSelectedBooking(booking)}
+        />
+      ),
+    }));
+    return [...unavailItems, ...bookingItems];
   }
 
-  /** Bookings and timed (non-full-day) unavailability blocks for a day, positioned in the week grid by actual start/end time. */
+  /** Timed (non-all-day) bookings and unavailability blocks for a day, positioned in the week grid by actual start/end time. */
   function getWeekTimedItems(day: Date): WeekTimedItem[] {
     const dateStr = toLocalDateString(day);
-    const dayBookings = bookingsByDay.get(dateStr) ?? [];
+    const dayBookings = (bookingsByDay.get(dateStr) ?? []).filter(
+      (b) => !b.allDay
+    );
     const timedBlocks = blocksForDate(visibleUnavailabilityBlocks, dateStr).filter(
       (block) => !isFullDayBlock(block)
     );

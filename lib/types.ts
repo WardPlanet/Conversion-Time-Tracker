@@ -1,4 +1,4 @@
-export type Role = "admin" | "trainer";
+export type Role = "admin" | "trainer" | "partner_admin";
 
 export interface User {
   id: string;
@@ -7,6 +7,16 @@ export interface User {
   passwordHash: string;
   name: string;
   email: string;
+  active: boolean;
+  /** Links a trainer or partner_admin to the Partner organization they belong to. */
+  partnerId?: string;
+}
+
+/** A partner organization that supplies trainers. Partner admins manage work orders on their trainers' behalf. */
+export interface Partner {
+  id: string;
+  name: string;
+  contactEmail: string;
   active: boolean;
 }
 
@@ -85,6 +95,12 @@ export interface Booking {
   rejectionReason?: string;
   /** Why the trainer asked to back out of an already-"accepted" booking. Required to request cancellation; kept on the record once "cancelled", cleared if an admin denies the request. */
   cancellationReason?: string;
+  /** Covers the entire calendar day — rendered in the all-day row of the week grid rather than time-positioned. */
+  allDay?: boolean;
+  /** "training" (default) or "travel" for the auto-added travel days before/after a training block. */
+  bookingType?: "training" | "travel";
+  /** Links all bookings created together in a single multi-day scheduling action (training days + travel days). */
+  groupId?: string;
 }
 
 export type TimeClockEventType =
@@ -129,7 +145,7 @@ export type ManualSessionRequestStatus = "pending" | "approved" | "denied";
 export interface ManualSessionBreakInput {
   start: string; // ISO 8601
   end: string; // ISO 8601
-} 
+}
 
 /**
  * A trainer manually logging a full past day they forgot to clock in/out
@@ -358,7 +374,9 @@ export type NotificationType =
   | "expense_submitted"
   | "expense_decision"
   | "booking_cancelled"
-  | "booking_rescheduled";
+  | "booking_rescheduled"
+  | "work_order_approved"
+  | "work_order_denied";
 
 /**
  * An alert generated as a side effect of a workflow event — e.g. a flag
