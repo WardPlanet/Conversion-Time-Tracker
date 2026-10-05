@@ -1,4 +1,4 @@
-import { sql } from "@vercel/postgres";
+﻿import { sql } from "@vercel/postgres";
 import crypto from "crypto";
 import type {
   User,
@@ -49,9 +49,6 @@ import type {
   CreateExpenseInput,
   UpdateExpenseInput,
   CreateUnavailabilityBlockInput,
-  CreatePartnerInput,
-  CreatePartnerAdminInput,
-  EnrichedWorkOrder,
   DataStore,
 } from "@/lib/data/store";
 import { ForbiddenError, BookingConflictError } from "@/lib/data/store";
@@ -166,9 +163,9 @@ function rowToBooking(r: Row): Booking {
     statusChangedAt: r.status_changed_at,
     rejectionReason: r.rejection_reason ?? undefined,
     cancellationReason: r.cancellation_reason ?? undefined,
-    allDay: r.all_day ?? undefined,
-    bookingType: (r.booking_type as Booking["bookingType"]) ?? "training",
+    allDay: r.all_day ?? false,
     groupId: r.group_id ?? undefined,
+    bookingType: r.booking_type ?? undefined,
   };
 }
 
@@ -346,6 +343,24 @@ export class PostgresDataStore implements DataStore {
 
   // ── Partners ───────────────────────────────────────────────────────────────
 
+  private async fetchPartnerAdminUser(actor: Actor): Promise<User> {
+    if (actor.role !== "partner_admin") {
+      throw new ForbiddenError("Only partner admins can access this.");
+    }
+    const result = await sql`SELECT * FROM users WHERE id = ${actor.id} LIMIT 1`;
+    if (!result.rows.length) throw new Error("Partner admin account not found.");
+    const admin = rowToUser(result.rows[0]);
+    if (!admin.partnerId) throw new Error("Partner admin is not assigned to a partner.");
+    return admin;
+  }
+
+  private async fetchPartnerContext(actor: Actor): Promise<{ admin: User; partnerTrainerIds: Set<string> }> {
+    const admin = await this.fetchPartnerAdminUser(actor);
+    const trainerRows = await sql`SELECT id FROM users WHERE role = 'trainer' AND partner_id = ${admin.partnerId}`;
+    const partnerTrainerIds = new Set(trainerRows.rows.map((r) => r.id as string));
+    return { admin, partnerTrainerIds };
+  }
+
   async listPartners(): Promise<Partner[]> {
     const result = await sql`SELECT * FROM partners ORDER BY name`;
     return result.rows.map(rowToPartner);
@@ -354,6 +369,11 @@ export class PostgresDataStore implements DataStore {
   async getPartner(id: string): Promise<Partner | null> {
     const result = await sql`SELECT * FROM partners WHERE id = ${id} LIMIT 1`;
     return result.rows.length ? rowToPartner(result.rows[0]) : null;
+  }
+
+  async listPartnerAdmins(): Promise<PublicUser[]> {
+    const result = await sql`SELECT * FROM users WHERE role = 'partner_admin' ORDER BY name`;
+    return result.rows.map((r) => toPublicUser(rowToUser(r)));
   }
 
   async createPartner(input: CreatePartnerInput, actor: Actor): Promise<Partner> {
@@ -369,17 +389,15 @@ export class PostgresDataStore implements DataStore {
 
   async createPartnerAdmin(input: CreatePartnerAdminInput, actor: Actor): Promise<PublicUser> {
     this.requireAdmin(actor, "create partner admin accounts");
-
     const partnerCheck = await sql`SELECT id FROM partners WHERE id = ${input.partnerId} LIMIT 1`;
     if (!partnerCheck.rows.length) throw new Error(`Partner "${input.partnerId}" not found.`);
-
     const existing = await sql`SELECT id FROM users WHERE username = ${input.username} LIMIT 1`;
     if (existing.rows.length) throw new Error(`Username "${input.username}" is already taken.`);
-
     const id = genId();
     await sql`
       INSERT INTO users (id, role, username, password_hash, name, email, active, partner_id)
-      VALUES (${id}, 'partner_admin', ${input.username}, ${input.passwordHash}, ${input.name}, ${input.email}, true, ${input.partnerId})
+      VALUES (${id}, 'partner_admin', ${input.username}, ${input.passwordHash},
+              ${input.name}, ${input.email}, true, ${input.partnerId})
     `;
     const result = await sql`SELECT * FROM users WHERE id = ${id} LIMIT 1`;
     return toPublicUser(rowToUser(result.rows[0]));
@@ -387,51 +405,46 @@ export class PostgresDataStore implements DataStore {
 
   async assignTrainerToPartner(trainerId: string, partnerId: string | null, actor: Actor): Promise<PublicUser> {
     this.requireAdmin(actor, "assign trainers to partners");
-
-    const trainerCheck = await sql`SELECT * FROM users WHERE id = ${trainerId} AND role = 'trainer' LIMIT 1`;
-    if (!trainerCheck.rows.length) throw new Error(`Trainer "${trainerId}" not found.`);
-
+    const check = await sql`SELECT id FROM users WHERE id = ${trainerId} AND role = 'trainer' LIMIT 1`;
+    if (!check.rows.length) throw new Error(`Trainer "${trainerId}" not found.`);
     if (partnerId !== null) {
       const partnerCheck = await sql`SELECT id FROM partners WHERE id = ${partnerId} LIMIT 1`;
       if (!partnerCheck.rows.length) throw new Error(`Partner "${partnerId}" not found.`);
     }
-
     await sql`UPDATE users SET partner_id = ${partnerId} WHERE id = ${trainerId}`;
     const result = await sql`SELECT * FROM users WHERE id = ${trainerId} LIMIT 1`;
     return toPublicUser(rowToUser(result.rows[0]));
   }
 
   async listWorkOrdersForPartner(actor: Actor): Promise<EnrichedWorkOrder[]> {
-    if (actor.role !== "partner_admin") {
-      throw new ForbiddenError("Only partner admins can view work orders.");
-    }
-    const partnerAdmin = await this.getUserById(actor.id);
-    if (!partnerAdmin?.partnerId) {
-      throw new Error("Partner admin is not assigned to a partner.");
-    }
-    const partnerId = partnerAdmin.partnerId;
+    const admin = await this.fetchPartnerAdminUser(actor);
+    const partnerId = admin.partnerId!;
 
-    const [trainers, bookings, projects, officesResult] = await Promise.all([
-      this.listTrainers(),
-      this.listAllBookings(),
-      this.listProjects(),
+    const [bookingRows, trainerRows, projectRows, officeRows] = await Promise.all([
+      sql`
+        SELECT b.* FROM bookings b
+        JOIN users u ON u.id = b.trainer_id
+        WHERE u.partner_id = ${partnerId}
+          AND (b.booking_type IS NULL OR b.booking_type != 'travel')
+      `,
+      sql`SELECT * FROM users WHERE role = 'trainer' AND partner_id = ${partnerId}`,
+      sql`SELECT * FROM projects`,
       sql`SELECT * FROM offices`,
     ]);
 
-    const partnerTrainers = trainers.filter((t) => t.partnerId === partnerId);
-    const partnerTrainerIds = new Set(partnerTrainers.map((t) => t.id));
-    const trainersById = new Map(partnerTrainers.map((t) => [t.id, t]));
-    const projectsById = new Map(projects.map((p) => [p.id, p]));
-    const officesById = new Map(officesResult.rows.map(rowToOffice).map((o) => [o.id, o]));
+    const trainersById = new Map(trainerRows.rows.map((r) => [r.id as string, toPublicUser(rowToUser(r))]));
+    const projectsById = new Map(projectRows.rows.map((r) => [r.id as string, rowToProject(r)]));
+    const officesById = new Map(officeRows.rows.map((r) => [r.id as string, rowToOffice(r)]));
 
-    return bookings
-      .filter((b) => partnerTrainerIds.has(b.trainerId) && b.bookingType !== "travel")
-      .map((b) => ({
+    return bookingRows.rows.map((r) => {
+      const b = rowToBooking(r);
+      return {
         ...b,
         trainer: trainersById.get(b.trainerId) ?? null,
         project: projectsById.get(b.projectId) ?? null,
         office: officesById.get(b.officeId) ?? null,
-      }));
+      };
+    });
   }
 
   async respondToWorkOrder(
@@ -440,46 +453,44 @@ export class PostgresDataStore implements DataStore {
     actor: Actor,
     reason?: string
   ): Promise<Booking> {
-    if (actor.role !== "partner_admin") {
-      throw new ForbiddenError("Only partner admins can respond to work orders.");
-    }
-    const partnerAdmin = await this.getUserById(actor.id);
-    if (!partnerAdmin?.partnerId) throw new Error("Partner admin is not assigned to a partner.");
+    const admin = await this.fetchPartnerAdminUser(actor);
+    const partnerId = admin.partnerId!;
 
-    const check = await sql`SELECT * FROM bookings WHERE id = ${bookingId} LIMIT 1`;
-    if (!check.rows.length) throw new Error(`Booking "${bookingId}" not found.`);
-    const booking = rowToBooking(check.rows[0]);
+    const bookingCheck = await sql`SELECT * FROM bookings WHERE id = ${bookingId} LIMIT 1`;
+    if (!bookingCheck.rows.length) throw new Error(`Booking "${bookingId}" not found.`);
+    const booking = rowToBooking(bookingCheck.rows[0]);
 
-    const trainer = await this.getUserById(booking.trainerId);
-    if (!trainer || trainer.partnerId !== partnerAdmin.partnerId) {
+    const trainerCheck = await sql`SELECT * FROM users WHERE id = ${booking.trainerId} LIMIT 1`;
+    if (!trainerCheck.rows.length || trainerCheck.rows[0].partner_id !== partnerId) {
       throw new ForbiddenError("This work order does not belong to your partner.");
     }
+
     if (booking.status !== "pending") {
       throw new Error("Only pending work orders can be approved or denied.");
     }
 
-    const newStatus: BookingStatus = action === "approve" ? "accepted" : "rejected";
+    const newStatus = action === "approve" ? "accepted" : "rejected";
     const statusChangedAt = new Date().toISOString();
-    const rejectionReason = action === "deny" && reason ? reason : null;
+    const rejectionReason = action === "deny" && reason ? reason.trim() : null;
+
     await sql`
       UPDATE bookings
-      SET status = ${newStatus}, status_changed_at = ${statusChangedAt},
-          rejection_reason = COALESCE(${rejectionReason}, rejection_reason)
+      SET status = ${newStatus}, status_changed_at = ${statusChangedAt}, rejection_reason = ${rejectionReason}
       WHERE id = ${bookingId}
     `;
 
     if (booking.groupId) {
       await sql`
         UPDATE bookings
-        SET status = ${newStatus}, status_changed_at = ${statusChangedAt}
-        WHERE group_id = ${booking.groupId} AND booking_type = 'travel' AND status = 'pending'
+        SET status = ${newStatus}, status_changed_at = ${statusChangedAt}, rejection_reason = ${rejectionReason}
+        WHERE group_id = ${booking.groupId} AND id != ${bookingId} AND status = 'pending'
       `;
     }
 
     await this.createNotification({
       type: action === "approve" ? "work_order_approved" : "work_order_denied",
       recipientRole: "admin",
-      message: `${partnerAdmin.name} ${action === "approve" ? "approved" : "denied"} work order "${booking.title}" for ${trainer.name}.`,
+      message: `${admin.name} ${action === "approve" ? "approved" : "denied"} work order "${booking.title}" for ${trainerCheck.rows[0].name}.`,
       relatedTrainerId: booking.trainerId,
       relatedEntityId: booking.id,
     });
@@ -488,29 +499,26 @@ export class PostgresDataStore implements DataStore {
     return rowToBooking(result.rows[0]);
   }
 
-  private async getPartnerAdminContext(actor: Actor): Promise<{ partnerAdmin: User; partnerTrainerIds: Set<string> }> {
-    if (actor.role !== "partner_admin") throw new ForbiddenError("Only partner admins can access this.");
-    const partnerAdmin = await this.getUserById(actor.id);
-    if (!partnerAdmin?.partnerId) throw new Error("Partner admin is not assigned to a partner.");
-    const trainers = await this.listTrainers();
-    const partnerTrainerIds = new Set(
-      trainers.filter((t) => t.partnerId === partnerAdmin.partnerId).map((t) => t.id)
-    );
-    return { partnerAdmin, partnerTrainerIds };
-  }
-
   async listSubmittedWeeklySubmissionsForPartner(
     actor: Actor
   ): Promise<Array<WeeklySubmission & { trainer: PublicUser | null }>> {
-    const { partnerTrainerIds } = await this.getPartnerAdminContext(actor);
-    const trainers = await this.listTrainers();
-    const trainersById = new Map(trainers.filter((t) => partnerTrainerIds.has(t.id)).map((t) => [t.id, t]));
+    const { partnerTrainerIds } = await this.fetchPartnerContext(actor);
+    if (!partnerTrainerIds.size) return [];
 
-    const result = await sql`SELECT * FROM weekly_submissions WHERE status = 'submitted'`;
-    return result.rows
-      .map(rowToWeeklySubmission)
-      .filter((s) => partnerTrainerIds.has(s.trainerId))
-      .map((s) => ({ ...s, trainer: trainersById.get(s.trainerId) ?? null }));
+    const [submissionRows, trainerRows] = await Promise.all([
+      sql`SELECT * FROM weekly_submissions WHERE status = 'submitted'`,
+      sql`SELECT * FROM users WHERE role = 'trainer'`,
+    ]);
+
+    const trainersById = new Map(
+      trainerRows.rows
+        .filter((r) => partnerTrainerIds.has(r.id))
+        .map((r) => [r.id as string, toPublicUser(rowToUser(r))])
+    );
+
+    return submissionRows.rows
+      .filter((r) => partnerTrainerIds.has(r.trainer_id))
+      .map((r) => ({ ...rowToWeeklySubmission(r), trainer: trainersById.get(r.trainer_id) ?? null }));
   }
 
   async reviewWeeklySubmissionAsPartner(
@@ -519,34 +527,35 @@ export class PostgresDataStore implements DataStore {
     actor: Actor,
     reason?: string
   ): Promise<WeeklySubmission> {
-    const { partnerAdmin, partnerTrainerIds } = await this.getPartnerAdminContext(actor);
+    const { admin, partnerTrainerIds } = await this.fetchPartnerContext(actor);
 
     const check = await sql`SELECT * FROM weekly_submissions WHERE id = ${submissionId} LIMIT 1`;
     if (!check.rows.length) throw new Error(`Submission "${submissionId}" not found.`);
     const submission = rowToWeeklySubmission(check.rows[0]);
+
     if (!partnerTrainerIds.has(submission.trainerId)) {
       throw new ForbiddenError("This submission does not belong to your partner.");
     }
     if (submission.status !== "submitted") throw new Error("Only submitted weeks can be approved or rejected.");
     if (action === "reject" && !reason?.trim()) throw new Error("A reason is required to reject a submission.");
 
-    const reviewedAt = new Date().toISOString();
     const newStatus = action === "approve" ? "approved" : "rejected";
-    const rejectionReason = action === "reject" ? reason!.trim() : null;
+    const reviewedAt = new Date().toISOString();
+    const trimmedReason = action === "reject" ? reason!.trim() : null;
+
     await sql`
       UPDATE weekly_submissions
-      SET status = ${newStatus}, reviewed_at = ${reviewedAt}, reviewed_by_admin_id = ${partnerAdmin.id},
-          rejection_reason = ${rejectionReason}
+      SET status = ${newStatus}, reviewed_at = ${reviewedAt},
+          reviewed_by_admin_id = ${admin.id}, rejection_reason = ${trimmedReason}
       WHERE id = ${submissionId}
     `;
 
-    const weekLabel = submission.weekStartDate;
     await this.createNotification({
       type: "submission_decision",
       recipientRole: "trainer",
       message: action === "approve"
-        ? `Your Task Tracker week of ${weekLabel} was approved.`
-        : `Your Task Tracker week of ${weekLabel} was rejected: "${reason}"`,
+        ? `Your Task Tracker week of ${formatWeekLabel(submission.weekStartDate)} was approved.`
+        : `Your Task Tracker week of ${formatWeekLabel(submission.weekStartDate)} was rejected: "${reason}"`,
       relatedTrainerId: submission.trainerId,
       relatedEntityId: submission.id,
     });
@@ -558,15 +567,23 @@ export class PostgresDataStore implements DataStore {
   async listSubmittedTimesheetSubmissionsForPartner(
     actor: Actor
   ): Promise<Array<TimesheetSubmission & { trainer: PublicUser | null }>> {
-    const { partnerTrainerIds } = await this.getPartnerAdminContext(actor);
-    const trainers = await this.listTrainers();
-    const trainersById = new Map(trainers.filter((t) => partnerTrainerIds.has(t.id)).map((t) => [t.id, t]));
+    const { partnerTrainerIds } = await this.fetchPartnerContext(actor);
+    if (!partnerTrainerIds.size) return [];
 
-    const result = await sql`SELECT * FROM timesheet_submissions WHERE status = 'submitted'`;
-    return result.rows
-      .map(rowToTimesheetSubmission)
-      .filter((s) => partnerTrainerIds.has(s.trainerId))
-      .map((s) => ({ ...s, trainer: trainersById.get(s.trainerId) ?? null }));
+    const [submissionRows, trainerRows] = await Promise.all([
+      sql`SELECT * FROM timesheet_submissions WHERE status = 'submitted'`,
+      sql`SELECT * FROM users WHERE role = 'trainer'`,
+    ]);
+
+    const trainersById = new Map(
+      trainerRows.rows
+        .filter((r) => partnerTrainerIds.has(r.id))
+        .map((r) => [r.id as string, toPublicUser(rowToUser(r))])
+    );
+
+    return submissionRows.rows
+      .filter((r) => partnerTrainerIds.has(r.trainer_id))
+      .map((r) => ({ ...rowToTimesheetSubmission(r), trainer: trainersById.get(r.trainer_id) ?? null }));
   }
 
   async reviewTimesheetSubmissionAsPartner(
@@ -575,34 +592,35 @@ export class PostgresDataStore implements DataStore {
     actor: Actor,
     reason?: string
   ): Promise<TimesheetSubmission> {
-    const { partnerAdmin, partnerTrainerIds } = await this.getPartnerAdminContext(actor);
+    const { admin, partnerTrainerIds } = await this.fetchPartnerContext(actor);
 
     const check = await sql`SELECT * FROM timesheet_submissions WHERE id = ${submissionId} LIMIT 1`;
     if (!check.rows.length) throw new Error(`Timesheet submission "${submissionId}" not found.`);
     const submission = rowToTimesheetSubmission(check.rows[0]);
+
     if (!partnerTrainerIds.has(submission.trainerId)) {
       throw new ForbiddenError("This submission does not belong to your partner.");
     }
     if (submission.status !== "submitted") throw new Error("Only submitted timesheets can be approved or rejected.");
     if (action === "reject" && !reason?.trim()) throw new Error("A reason is required to reject a timesheet.");
 
-    const reviewedAt = new Date().toISOString();
     const newStatus = action === "approve" ? "approved" : "rejected";
-    const rejectionReason = action === "reject" ? reason!.trim() : null;
+    const reviewedAt = new Date().toISOString();
+    const trimmedReason = action === "reject" ? reason!.trim() : null;
+
     await sql`
       UPDATE timesheet_submissions
-      SET status = ${newStatus}, reviewed_at = ${reviewedAt}, reviewed_by_admin_id = ${partnerAdmin.id},
-          rejection_reason = ${rejectionReason}
+      SET status = ${newStatus}, reviewed_at = ${reviewedAt},
+          reviewed_by_admin_id = ${admin.id}, rejection_reason = ${trimmedReason}
       WHERE id = ${submissionId}
     `;
 
-    const weekLabel = submission.weekStartDate;
     await this.createNotification({
       type: "timesheet_submission_decision",
       recipientRole: "trainer",
       message: action === "approve"
-        ? `Your timesheet for the week of ${weekLabel} was approved.`
-        : `Your timesheet for the week of ${weekLabel} was rejected: "${reason}"`,
+        ? `Your timesheet for the week of ${formatWeekLabel(submission.weekStartDate)} was approved.`
+        : `Your timesheet for the week of ${formatWeekLabel(submission.weekStartDate)} was rejected: "${reason}"`,
       relatedTrainerId: submission.trainerId,
       relatedEntityId: submission.id,
     });
@@ -614,15 +632,23 @@ export class PostgresDataStore implements DataStore {
   async listPendingExpensesForPartner(
     actor: Actor
   ): Promise<Array<Expense & { trainer: PublicUser | null }>> {
-    const { partnerTrainerIds } = await this.getPartnerAdminContext(actor);
-    const trainers = await this.listTrainers();
-    const trainersById = new Map(trainers.filter((t) => partnerTrainerIds.has(t.id)).map((t) => [t.id, t]));
+    const { partnerTrainerIds } = await this.fetchPartnerContext(actor);
+    if (!partnerTrainerIds.size) return [];
 
-    const result = await sql`SELECT * FROM expenses WHERE status = 'pending'`;
-    return result.rows
-      .map(rowToExpense)
-      .filter((e) => partnerTrainerIds.has(e.trainerId))
-      .map((e) => ({ ...e, trainer: trainersById.get(e.trainerId) ?? null }));
+    const [expenseRows, trainerRows] = await Promise.all([
+      sql`SELECT * FROM expenses WHERE status = 'pending'`,
+      sql`SELECT * FROM users WHERE role = 'trainer'`,
+    ]);
+
+    const trainersById = new Map(
+      trainerRows.rows
+        .filter((r) => partnerTrainerIds.has(r.id))
+        .map((r) => [r.id as string, toPublicUser(rowToUser(r))])
+    );
+
+    return expenseRows.rows
+      .filter((r) => partnerTrainerIds.has(r.trainer_id))
+      .map((r) => ({ ...rowToExpense(r), trainer: trainersById.get(r.trainer_id) ?? null }));
   }
 
   async reviewExpenseAsPartner(
@@ -631,24 +657,26 @@ export class PostgresDataStore implements DataStore {
     actor: Actor,
     reason?: string
   ): Promise<Expense> {
-    const { partnerAdmin, partnerTrainerIds } = await this.getPartnerAdminContext(actor);
+    const { admin, partnerTrainerIds } = await this.fetchPartnerContext(actor);
 
     const check = await sql`SELECT * FROM expenses WHERE id = ${expenseId} LIMIT 1`;
     if (!check.rows.length) throw new Error(`Expense "${expenseId}" not found.`);
     const expense = rowToExpense(check.rows[0]);
+
     if (!partnerTrainerIds.has(expense.trainerId)) {
       throw new ForbiddenError("This expense does not belong to your partner.");
     }
     if (expense.status !== "pending") throw new Error("Only pending expenses can be approved or rejected.");
     if (action === "reject" && !reason?.trim()) throw new Error("A reason is required to reject an expense.");
 
-    const reviewedAt = new Date().toISOString();
     const newStatus = action === "approve" ? "approved" : "rejected";
-    const rejectionReason = action === "reject" ? reason!.trim() : null;
+    const reviewedAt = new Date().toISOString();
+    const trimmedReason = action === "reject" ? reason!.trim() : null;
+
     await sql`
       UPDATE expenses
-      SET status = ${newStatus}, reviewed_at = ${reviewedAt}, reviewed_by_admin_id = ${partnerAdmin.id},
-          rejection_reason = ${rejectionReason}
+      SET status = ${newStatus}, reviewed_at = ${reviewedAt},
+          reviewed_by_admin_id = ${admin.id}, rejection_reason = ${trimmedReason}
       WHERE id = ${expenseId}
     `;
 
@@ -872,19 +900,17 @@ export class PostgresDataStore implements DataStore {
       throw new Error("End time must be after start time.");
     }
 
-    if (input.bookingType !== "travel") {
-      const existingBookings = await this.listBookingsForTrainer(input.trainerId);
-      const conflict = findConflictingBooking(existingBookings, input.trainerId, {
-        startTime: input.startTime,
-        endTime: input.endTime,
-      });
-      if (conflict) {
-        const trainerName = rowToUser(trainerCheck.rows[0]).name;
-        throw new BookingConflictError(
-          `${trainerName} already has a booking that overlaps this time.`,
-          conflict
-        );
-      }
+    const existingBookings = await this.listBookingsForTrainer(input.trainerId);
+    const conflict = findConflictingBooking(existingBookings, input.trainerId, {
+      startTime: input.startTime,
+      endTime: input.endTime,
+    });
+    if (conflict) {
+      const trainerName = rowToUser(trainerCheck.rows[0]).name;
+      throw new BookingConflictError(
+        `${trainerName} already has a booking that overlaps this time.`,
+        conflict
+      );
     }
 
     const id = genId();
@@ -893,27 +919,25 @@ export class PostgresDataStore implements DataStore {
       INSERT INTO bookings
         (id, trainer_id, project_id, office_id, title, start_time, end_time,
          location, billable, billable_set_by_admin, status, notes, status_changed_at,
-         all_day, booking_type, group_id)
+         booking_type, group_id, all_day)
       VALUES
         (${id}, ${input.trainerId}, ${input.projectId}, ${input.officeId},
          ${input.title}, ${input.startTime}, ${input.endTime},
          ${input.location}, ${input.billable}, true, 'pending',
          ${input.notes ?? null}, ${statusChangedAt},
-         ${input.allDay ?? false}, ${input.bookingType ?? "training"}, ${input.groupId ?? null})
+         ${input.bookingType ?? null}, ${input.groupId ?? null}, ${input.allDay ?? false})
     `;
 
     const result = await sql`SELECT * FROM bookings WHERE id = ${id} LIMIT 1`;
     const booking = rowToBooking(result.rows[0]);
 
-    if (input.bookingType !== "travel") {
-      await this.createNotification({
-        type: "booking_created",
-        recipientRole: "trainer",
-        message: `New booking request: "${booking.title}" (${formatDateRange(booking.startTime, booking.endTime)}).`,
-        relatedTrainerId: booking.trainerId,
-        relatedEntityId: booking.id,
-      });
-    }
+    await this.createNotification({
+      type: "booking_created",
+      recipientRole: "trainer",
+      message: `New booking request: "${booking.title}" (${formatDateRange(booking.startTime, booking.endTime)}).`,
+      relatedTrainerId: booking.trainerId,
+      relatedEntityId: booking.id,
+    });
 
     return booking;
   }
@@ -979,7 +1003,7 @@ export class PostgresDataStore implements DataStore {
     }
 
     await sql`
-      UPDATE bookings SET start_time = ${updates.startTime}, end_time = ${updates.endTime}, location = ${updates.location}
+      UPDATE bookings SET start_time = ${updates.startTime}, end_time = ${updates.endTime}, location = ${updates.location}, all_day = ${updates.allDay ?? false}
       WHERE id = ${bookingId}
     `;
     const result = await sql`SELECT * FROM bookings WHERE id = ${bookingId} LIMIT 1`;
@@ -1094,6 +1118,14 @@ export class PostgresDataStore implements DataStore {
       SET status = 'cancelled', cancellation_reason = ${trimmedReason}, status_changed_at = ${statusChangedAt}
       WHERE id = ${bookingId}
     `;
+
+    if (booking.groupId) {
+      await sql`
+        UPDATE bookings
+        SET status = 'cancelled', cancellation_reason = ${trimmedReason}, status_changed_at = ${statusChangedAt}
+        WHERE group_id = ${booking.groupId} AND id != ${bookingId} AND status != 'cancelled'
+      `;
+    }
 
     await this.createNotification({
       type: "booking_cancelled",

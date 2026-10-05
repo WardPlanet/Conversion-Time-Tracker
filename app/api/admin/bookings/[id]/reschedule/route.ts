@@ -25,6 +25,7 @@ export async function PATCH(
   const location = body?.location;
   const billable = body?.billable;
   const reason = typeof body?.reason === "string" ? body.reason : undefined;
+  const allDay = typeof body?.allDay === "boolean" ? body.allDay : false;
 
   if (!startTime || !endTime || !VALID_LOCATIONS.includes(location)) {
     return NextResponse.json(
@@ -44,7 +45,7 @@ export async function PATCH(
   try {
     const booking = await store.adminRescheduleBooking(
       params.id,
-      { startTime, endTime, location },
+      { startTime, endTime, location, allDay },
       actor,
       billable,
       reason

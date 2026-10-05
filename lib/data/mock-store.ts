@@ -1268,6 +1268,7 @@ export class MockDataStore implements DataStore {
     booking.startTime = updates.startTime;
     booking.endTime = updates.endTime;
     booking.location = updates.location;
+    booking.allDay = updates.allDay ?? false;
     return booking;
   }
 
@@ -1393,6 +1394,16 @@ export class MockDataStore implements DataStore {
     booking.status = "cancelled";
     booking.cancellationReason = trimmedReason;
     booking.statusChangedAt = new Date().toISOString();
+
+    if (booking.groupId) {
+      for (const b of this.bookings) {
+        if (b.groupId === booking.groupId && b.id !== bookingId && b.status !== "cancelled") {
+          b.status = "cancelled";
+          b.cancellationReason = trimmedReason;
+          b.statusChangedAt = booking.statusChangedAt;
+        }
+      }
+    }
 
     await this.createNotification({
       type: "booking_cancelled",
