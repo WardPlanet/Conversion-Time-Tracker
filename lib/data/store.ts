@@ -132,6 +132,7 @@ export interface UpdateBookingDetailsInput {
   startTime: string;
   endTime: string;
   location: BookingLocation;
+  allDay?: boolean;
 }
 
 export interface CreateBookingInput {

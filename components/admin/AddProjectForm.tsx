@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ChevronDown } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
 import type { PublicUser, Project, ProductLine } from "@/lib/types";
 import { STANDARD_TASKS, displayTaskTitle } from "@/lib/domain/tasks";
 
@@ -11,118 +10,15 @@ const PRODUCT_LINE_LABELS: Record<ProductLine, string> = {
   internal_admin: "Internal / Admin",
 };
 
-/** Fixed palette a project's color is picked from — swaps out the old free-form gradient/RGB picker for a small, consistent set of options. */
-const PROJECT_COLOR_SWATCHES = [
-  { hex: "#3a5cf5", name: "Blue" },
-  { hex: "#16a34a", name: "Green" },
-  { hex: "#ea580c", name: "Orange" },
-  { hex: "#db2777", name: "Pink" },
-  { hex: "#9333ea", name: "Purple" },
-  { hex: "#0891b2", name: "Teal" },
-  { hex: "#ca8a04", name: "Gold" },
-  { hex: "#dc2626", name: "Red" },
-  { hex: "#4f46e5", name: "Indigo" },
-  { hex: "#65a30d", name: "Olive" },
-];
+const DEFAULT_COLOR = "#3a5cf5";
 
 function emptyForm() {
   return {
     name: "",
     productLine: "denticon" as ProductLine,
-    color: PROJECT_COLOR_SWATCHES[0].hex,
     projectId: "",
-    bccEmail: "",
     notes: "",
   };
-}
-
-function ColorSwatchDropdown({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (hex: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const selected =
-    PROJECT_COLOR_SWATCHES.find((c) => c.hex === value) ??
-    PROJECT_COLOR_SWATCHES[0];
-
-  useEffect(() => {
-    if (!open) return;
-    function handlePointerDown(e: MouseEvent) {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false);
-      }
-    }
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKey);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [open]);
-
-  return (
-    <div ref={containerRef} className="relative mt-1">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        className="flex w-full items-center gap-2 rounded-md border border-brand-darkBlue/20 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
-      >
-        <span
-          className="h-4 w-4 shrink-0 rounded-full"
-          style={{ backgroundColor: selected.hex }}
-        />
-        <span className="flex-1 text-left text-brand-darkBlue">
-          {selected.name}
-        </span>
-        <ChevronDown className="h-4 w-4 shrink-0 text-brand-darkBlue/50" />
-      </button>
-
-      {open && (
-        <ul
-          role="listbox"
-          className="absolute z-10 mt-1 w-full rounded-md border border-brand-darkBlue/10 bg-white py-1 shadow-lg"
-        >
-          {PROJECT_COLOR_SWATCHES.map((color) => {
-            const isSelected = color.hex === selected.hex;
-            return (
-              <li key={color.hex}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={isSelected}
-                  onClick={() => {
-                    onChange(color.hex);
-                    setOpen(false);
-                  }}
-                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-brand-blueWater ${
-                    isSelected ? "font-medium text-brand-darkBlue" : "text-brand-darkBlue/80"
-                  }`}
-                >
-                  <span
-                    className="h-4 w-4 shrink-0 rounded-full"
-                    style={{ backgroundColor: color.hex }}
-                  />
-                  {color.name}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
 }
 
 /**
@@ -143,10 +39,6 @@ export function AddProjectForm({
   const [submitting, setSubmitting] = useState(false);
 
   const [trainers, setTrainers] = useState<PublicUser[]>([]);
-  // Presence of a trainerId as a key means that trainer is checked; the Set
-  // value holds `StandardTaskTemplate.key`s (not titles — two templates
-  // share the title "On-Site Customer Support") for which standard tasks
-  // apply to them.
   const [assignments, setAssignments] = useState<Map<string, Set<string>>>(
     new Map()
   );
@@ -164,9 +56,6 @@ export function AddProjectForm({
       if (next.has(trainerId)) {
         next.delete(trainerId);
       } else {
-        // Newly checking a trainer starts with none of the 5 standard
-        // tasks selected — the admin actively picks which apply, or hits
-        // "Select all" for the full checklist.
         next.set(trainerId, new Set());
       }
       return next;
@@ -207,7 +96,7 @@ export function AddProjectForm({
       const response = await fetch("/api/admin/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, color: DEFAULT_COLOR, bccEmail: "" }),
       });
       const data = await response.json();
 
@@ -234,7 +123,7 @@ export function AddProjectForm({
           });
           if (!taskResponse.ok) {
             setError(
-              "Project was created, but assigning some tasks failed. Use “Manage offices & tasks” to finish assigning them."
+              'Project was created, but assigning some tasks failed. Use "Manage offices & tasks" to finish assigning them.'
             );
           }
         }
@@ -288,14 +177,6 @@ export function AddProjectForm({
         </select>
       </label>
 
-      <div className="block">
-        <span className="block text-sm font-medium text-brand-darkBlue/80">Color</span>
-        <ColorSwatchDropdown
-          value={form.color}
-          onChange={(hex) => setForm((f) => ({ ...f, color: hex }))}
-        />
-      </div>
-
       <label className="block">
         <span className="block text-sm font-medium text-brand-darkBlue/80">
           Project ID (client-facing)
@@ -307,22 +188,6 @@ export function AddProjectForm({
           value={form.projectId}
           onChange={(e) =>
             setForm((f) => ({ ...f, projectId: e.target.value }))
-          }
-          className="mt-1 block w-full rounded-md border border-brand-darkBlue/20 px-3 py-2 text-sm shadow-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
-        />
-      </label>
-
-      <label className="block">
-        <span className="block text-sm font-medium text-brand-darkBlue/80">
-          BCC email
-        </span>
-        <input
-          type="email"
-          required
-          placeholder="notifications@example.com"
-          value={form.bccEmail}
-          onChange={(e) =>
-            setForm((f) => ({ ...f, bccEmail: e.target.value }))
           }
           className="mt-1 block w-full rounded-md border border-brand-darkBlue/20 px-3 py-2 text-sm shadow-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
         />
@@ -348,8 +213,8 @@ export function AddProjectForm({
           <p className="mt-1 text-xs text-brand-darkBlue/50">
             Every project draws from the same 5-task standard checklist.
             Check a trainer, then check which of those 5 apply to them —
-            or skip this and assign tasks later via “Manage offices &amp;
-            tasks.”
+            or skip this and assign tasks later via "Manage offices &amp;
+            tasks."
           </p>
 
           <div className="mt-3 space-y-3">

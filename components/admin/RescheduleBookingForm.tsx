@@ -10,6 +10,19 @@ export interface RescheduleUpdates {
   location: BookingLocation;
   billable: BillableStatus;
   reason: string;
+  allDay: boolean;
+}
+
+function toDateValue(iso: string): string {
+  return iso.slice(0, 10);
+}
+
+function localMidnight(dateStr: string): string {
+  return new Date(`${dateStr}T00:00:00`).toISOString();
+}
+
+function localEndOfDay(dateStr: string): string {
+  return new Date(`${dateStr}T23:59:59`).toISOString();
 }
 
 /**
@@ -32,9 +45,12 @@ export function RescheduleBookingForm({
   submitting: boolean;
   error?: string | null;
 }) {
+  const [allDay, setAllDay] = useState(booking.allDay ?? false);
   const [form, setForm] = useState({
     startTime: toDateTimeLocalValue(booking.startTime),
     endTime: toDateTimeLocalValue(booking.endTime),
+    startDate: toDateValue(booking.startTime),
+    endDate: toDateValue(booking.endTime),
     location: booking.location,
     billable: booking.billable,
     reason: "",
@@ -42,14 +58,24 @@ export function RescheduleBookingForm({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const startTime = allDay
+      ? localMidnight(form.startDate)
+      : new Date(form.startTime).toISOString();
+    const endTime = allDay
+      ? localEndOfDay(form.endDate)
+      : new Date(form.endTime).toISOString();
     onSubmit({
-      startTime: new Date(form.startTime).toISOString(),
-      endTime: new Date(form.endTime).toISOString(),
+      startTime,
+      endTime,
       location: form.location,
       billable: form.billable,
       reason: form.reason.trim(),
+      allDay,
     });
   }
+
+  const inputClass =
+    "mt-1 block w-full rounded-md border border-brand-darkBlue/20 px-3 py-2 text-sm shadow-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue";
 
   return (
     <div>
@@ -61,33 +87,79 @@ export function RescheduleBookingForm({
         onSubmit={handleSubmit}
         className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2"
       >
-        <label className="block">
-          <span className="block text-sm font-medium text-brand-darkBlue/80">
-            Start
-          </span>
+        <label className="flex items-center gap-2 sm:col-span-2">
           <input
-            type="datetime-local"
-            required
-            value={form.startTime}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, startTime: e.target.value }))
-            }
-            className="mt-1 block w-full rounded-md border border-brand-darkBlue/20 px-3 py-2 text-sm shadow-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            type="checkbox"
+            checked={allDay}
+            onChange={(e) => setAllDay(e.target.checked)}
+            className="h-4 w-4 rounded border-brand-darkBlue/30 text-brand-blue focus:ring-brand-blue"
           />
+          <span className="text-sm font-medium text-brand-darkBlue/80">All day</span>
         </label>
 
-        <label className="block">
-          <span className="block text-sm font-medium text-brand-darkBlue/80">End</span>
-          <input
-            type="datetime-local"
-            required
-            value={form.endTime}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, endTime: e.target.value }))
-            }
-            className="mt-1 block w-full rounded-md border border-brand-darkBlue/20 px-3 py-2 text-sm shadow-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
-          />
-        </label>
+        {allDay ? (
+          <>
+            <label className="block">
+              <span className="block text-sm font-medium text-brand-darkBlue/80">
+                Start date
+              </span>
+              <input
+                type="date"
+                required
+                value={form.startDate}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, startDate: e.target.value }))
+                }
+                className={inputClass}
+              />
+            </label>
+
+            <label className="block">
+              <span className="block text-sm font-medium text-brand-darkBlue/80">
+                End date
+              </span>
+              <input
+                type="date"
+                required
+                value={form.endDate}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, endDate: e.target.value }))
+                }
+                className={inputClass}
+              />
+            </label>
+          </>
+        ) : (
+          <>
+            <label className="block">
+              <span className="block text-sm font-medium text-brand-darkBlue/80">
+                Start
+              </span>
+              <input
+                type="datetime-local"
+                required
+                value={form.startTime}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, startTime: e.target.value }))
+                }
+                className={inputClass}
+              />
+            </label>
+
+            <label className="block">
+              <span className="block text-sm font-medium text-brand-darkBlue/80">End</span>
+              <input
+                type="datetime-local"
+                required
+                value={form.endTime}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, endTime: e.target.value }))
+                }
+                className={inputClass}
+              />
+            </label>
+          </>
+        )}
 
         <label className="block">
           <span className="block text-sm font-medium text-brand-darkBlue/80">
@@ -101,7 +173,7 @@ export function RescheduleBookingForm({
                 location: e.target.value as BookingLocation,
               }))
             }
-            className="mt-1 block w-full rounded-md border border-brand-darkBlue/20 px-3 py-2 text-sm shadow-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            className={inputClass}
           >
             <option value="on_site">On-site</option>
             <option value="remote">Remote</option>
@@ -120,7 +192,7 @@ export function RescheduleBookingForm({
                 billable: e.target.value as BillableStatus,
               }))
             }
-            className="mt-1 block w-full rounded-md border border-brand-darkBlue/20 px-3 py-2 text-sm shadow-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            className={inputClass}
           >
             <option value="billable">Billable</option>
             <option value="non_billable">Non-billable</option>

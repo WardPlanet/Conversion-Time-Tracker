@@ -352,6 +352,7 @@ export default function AdminSchedulingPage() {
             location: updates.location,
             billable: updates.billable,
             reason: updates.reason || undefined,
+            allDay: updates.allDay,
           }),
         }
       );
