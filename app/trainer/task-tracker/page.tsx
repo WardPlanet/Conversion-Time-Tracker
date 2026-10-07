@@ -501,7 +501,7 @@ export default function TaskTrackerPage() {
   const currentSubmission = findWeekSubmission(submissions, currentWeekStart);
   const weekLockState = computeWeekLockState(currentSubmission);
   const weekStatus = currentSubmission?.status ?? "draft";
-  const canSubmitWeek = weekStatus === "draft" || weekStatus === "rejected";
+  const canSubmitWeek = (weekStatus === "draft" || weekStatus === "rejected") && entriesThisWeek.length > 0;
 
   const isEditingEntryEditable = editingEntry
     ? isEntryEditable(editingEntry.date)

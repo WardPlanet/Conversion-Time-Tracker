@@ -228,6 +228,7 @@ export interface DataStore {
   // Partners
   listPartners(): Promise<Partner[]>;
   getPartner(id: string): Promise<Partner | null>;
+  listPartnerAdmins(): Promise<PublicUser[]>;
   createPartner(input: CreatePartnerInput, actor: Actor): Promise<Partner>;
   createPartnerAdmin(input: CreatePartnerAdminInput, actor: Actor): Promise<PublicUser>;
   assignTrainerToPartner(trainerId: string, partnerId: string | null, actor: Actor): Promise<PublicUser>;

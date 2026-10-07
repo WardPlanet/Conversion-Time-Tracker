@@ -2,16 +2,18 @@
 
 import { useEffect, useState } from "react";
 import type { Partner, PublicUser } from "@/lib/types";
-import { Building2, UserPlus, Link2 } from "lucide-react";
+import { Building2, UserPlus, Link2, ShieldCheck } from "lucide-react";
 
 interface PageData {
   partners: Partner[];
   trainers: PublicUser[];
+  partnerAdmins: PublicUser[];
 }
 
 export default function AdminPartnersPage() {
   const [data, setData] = useState<PageData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // New partner form
@@ -37,9 +39,10 @@ export default function AdminPartnersPage() {
 
   useEffect(() => { load(); }, []);
 
-  async function post(body: object) {
+  async function post(body: object, successMsg: string) {
     setSubmitting(true);
     setError(null);
+    setSuccess(null);
     const res = await fetch("/api/admin/partners", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -52,12 +55,13 @@ export default function AdminPartnersPage() {
       return false;
     }
     await load();
+    setSuccess(successMsg);
     return true;
   }
 
   async function createPartner() {
     if (!partnerName.trim() || !partnerEmail.trim()) { setError("Name and email are required."); return; }
-    const ok = await post({ type: "partner", name: partnerName, contactEmail: partnerEmail });
+    const ok = await post({ type: "partner", name: partnerName, contactEmail: partnerEmail }, `Partner "${partnerName}" created.`);
     if (ok) { setPartnerName(""); setPartnerEmail(""); }
   }
 
@@ -65,17 +69,26 @@ export default function AdminPartnersPage() {
     if (!adminUsername || !adminPassword || !adminName || !adminEmail || !adminPartnerId) {
       setError("All fields are required."); return;
     }
-    const ok = await post({ type: "partner_admin", username: adminUsername, password: adminPassword, name: adminName, email: adminEmail, partnerId: adminPartnerId });
+    const ok = await post(
+      { type: "partner_admin", username: adminUsername, password: adminPassword, name: adminName, email: adminEmail, partnerId: adminPartnerId },
+      `Partner admin "${adminUsername}" created. They can log in with that username and the password you set.`
+    );
     if (ok) { setAdminUsername(""); setAdminPassword(""); setAdminName(""); setAdminEmail(""); setAdminPartnerId(""); }
   }
 
   async function assignTrainer() {
     if (!assignTrainerId) { setError("Select a trainer."); return; }
-    await post({ type: "assign_trainer", trainerId: assignTrainerId, partnerId: assignPartnerId || null });
+    const trainer = trainers.find((t) => t.id === assignTrainerId);
+    const partner = partners.find((p) => p.id === assignPartnerId);
+    const msg = partner
+      ? `${trainer?.name ?? "Trainer"} assigned to ${partner.name}.`
+      : `${trainer?.name ?? "Trainer"} removed from their partner.`;
+    await post({ type: "assign_trainer", trainerId: assignTrainerId, partnerId: assignPartnerId || null }, msg);
   }
 
   const partners = data?.partners ?? [];
   const trainers = data?.trainers ?? [];
+  const partnerAdmins = data?.partnerAdmins ?? [];
 
   return (
     <div className="space-y-10">
@@ -88,6 +101,9 @@ export default function AdminPartnersPage() {
 
       {error && (
         <p className="rounded-md bg-red-50 px-4 py-2 text-sm text-red-600">{error}</p>
+      )}
+      {success && (
+        <p className="rounded-md bg-green-50 px-4 py-2 text-sm text-green-700">{success}</p>
       )}
 
       {/* Partner list */}
@@ -106,6 +122,41 @@ export default function AdminPartnersPage() {
                 <p className="mt-1 text-xs text-brand-darkBlue/30">ID: {p.id}</p>
               </li>
             ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Partner admin list */}
+      <section>
+        <h2 className="flex items-center gap-2 text-base font-medium text-brand-darkBlue">
+          <ShieldCheck className="h-4 w-4" /> Partner Admins ({partnerAdmins.length})
+        </h2>
+        {partnerAdmins.length === 0 ? (
+          <p className="mt-2 text-sm text-brand-darkBlue/50">No partner admin accounts yet.</p>
+        ) : (
+          <ul className="mt-3 flex flex-col gap-2">
+            {partnerAdmins.map((pa) => {
+              const partner = partners.find((p) => p.id === pa.partnerId);
+              return (
+                <li key={pa.id} className="rounded-lg border border-brand-darkBlue/10 bg-white px-4 py-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-brand-darkBlue">{pa.name}</p>
+                      <p className="text-sm text-brand-darkBlue/50">{pa.email}</p>
+                      <p className="mt-0.5 text-xs text-brand-darkBlue/40">
+                        Username: {pa.username}
+                        {partner && <span className="ml-2">· {partner.name}</span>}
+                      </p>
+                    </div>
+                    {partner && (
+                      <span className="rounded-full bg-brand-blue/10 px-2 py-0.5 text-xs font-medium text-brand-blue">
+                        {partner.name}
+                      </span>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

@@ -48,6 +48,8 @@ async function runMigration() {
   `;
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS partner_id TEXT`;
 
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS partner_id TEXT`;
+
   await sql`
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
@@ -106,6 +108,9 @@ async function runMigration() {
   `;
   await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS all_day BOOLEAN NOT NULL DEFAULT false`;
   await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_type TEXT NOT NULL DEFAULT 'training'`;
+  await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS group_id TEXT`;
+
+  await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_type TEXT`;
   await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS group_id TEXT`;
 
   await sql`

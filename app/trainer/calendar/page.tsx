@@ -5,7 +5,6 @@ import { addMonths, addWeeks, format, subMonths, subWeeks } from "date-fns";
 import { AlertTriangle } from "lucide-react";
 import type {
   Booking,
-  BookingStatus,
   Office,
   Project,
   UnavailabilityBlock,
@@ -35,22 +34,16 @@ import {
 } from "@/lib/format";
 import {
   requestBookingCancellation,
-  respondToBooking,
 } from "@/lib/domain/booking-actions";
 import {
-  isWithinUndoWindow,
-  selectPendingBookings,
   selectRecentRejectedBookings,
 } from "@/lib/domain/trainer-stats";
 import { useToast } from "@/components/ToastProvider";
-import { RejectReasonModal } from "@/components/trainer/RejectReasonModal";
 import { RequestCancellationModal } from "@/components/trainer/RequestCancellationModal";
 import { AvailabilityManager } from "@/components/trainer/AvailabilityManager";
 import { blocksForDate, formatHHMM, isFullDayBlock } from "@/lib/domain/unavailability";
 
 type EnrichedBooking = Booking & { project: Project | null; office: Office | null };
-
-type RespondableStatus = Extract<BookingStatus, "accepted" | "rejected" | "pending">;
 
 type DayItem =
   | { kind: "booking"; key: string; booking: EnrichedBooking }
@@ -63,23 +56,13 @@ type DayItem =
 
 const MAX_CHIPS_PER_DAY = 3;
 
-/**
- * One row in the sidebar list — same accept/reject action as the grid's
- * modal (`onAccept`/`onRejectRequest`), just triggered from here instead of
- * duplicating the logic. Clicking the row (not the buttons) scrolls/
- * highlights its day in the grid via `onSelectDay`.
- */
 function BookingListItem({
   booking,
-  onAccept,
-  onRejectRequest,
   onCancellationRequest,
   onSelectDay,
   pendingAction,
 }: {
   booking: EnrichedBooking;
-  onAccept: (bookingId: string) => void;
-  onRejectRequest: (bookingId: string) => void;
   onCancellationRequest: (bookingId: string) => void;
   onSelectDay: (day: Date) => void;
   pendingAction: boolean;
@@ -124,28 +107,7 @@ function BookingListItem({
         <BookingStatusTag status={booking.status} />
       </div>
       {booking.status === "pending" && (
-        <div className="mt-2 flex gap-2">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onAccept(booking.id);
-            }}
-            disabled={pendingAction}
-            className="rounded-md bg-brand-blue px-2 py-1 text-xs font-medium text-white hover:bg-brand-darkBlue disabled:opacity-50"
-          >
-            Accept
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onRejectRequest(booking.id);
-            }}
-            disabled={pendingAction}
-            className="rounded-md border border-brand-darkBlue/20 px-2 py-1 text-xs hover:bg-brand-blueWater disabled:opacity-50"
-          >
-            Reject
-          </button>
-        </div>
+        <p className="mt-2 text-xs text-brand-darkBlue/50 italic">Awaiting approval.</p>
       )}
     </div>
   );
@@ -169,7 +131,6 @@ export default function TrainerCalendarPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState(false);
   const [highlightedDate, setHighlightedDate] = useState<string | null>(null);
-  const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const [availabilityModalOpen, setAvailabilityModalOpen] = useState(false);
   const { showToast } = useToast();
@@ -228,13 +189,6 @@ export default function TrainerCalendarPage() {
     () => selectRecentRejectedBookings(bookings, new Date(), 30),
     [bookings]
   );
-  // Every pending booking regardless of month/view — unlike the Dashboard's
-  // single-booking fast path, this page has room to list them all at once.
-  const pendingBookings = useMemo(
-    () => selectPendingBookings(bookings),
-    [bookings]
-  );
-
   /** Bookings and unavailability blocks for a day, combined into one ordered
    * list so they share the same chip stack and "+N more" overflow. */
   function getDayItems(day: Date): DayItem[] {
@@ -281,41 +235,6 @@ export default function TrainerCalendarPage() {
     setCursor(new Date());
   }
 
-  async function respond(
-    bookingId: string,
-    status: RespondableStatus,
-    reason?: string
-  ) {
-    setActionError(null);
-    setPendingAction(true);
-
-    try {
-      const result = await respondToBooking(bookingId, status, reason);
-      if (result.error) {
-        setActionError(result.error);
-        return;
-      }
-
-      // Re-fetch from the DataStore rather than mutating local state, so the
-      // grid always reflects what was actually persisted server-side.
-      setSelectedBooking(null);
-      await loadBookings();
-
-      if (status === "accepted" || status === "rejected") {
-        showToast({
-          message: status === "accepted" ? "Booking accepted" : "Booking rejected",
-          onUndo: () => respond(bookingId, "pending"),
-        });
-      }
-    } finally {
-      setPendingAction(false);
-    }
-  }
-
-  function requestReject(bookingId: string) {
-    setRejectTargetId(bookingId);
-  }
-
   function requestCancellation(bookingId: string) {
     setCancelTargetId(bookingId);
   }
@@ -348,53 +267,8 @@ export default function TrainerCalendarPage() {
     <div>
       <h1 className="text-2xl font-semibold text-brand-blue">Calendar</h1>
       <p className="mt-1 text-sm text-brand-darkBlue/60">
-        Your bookings — click one to accept or reject anything pending.
+        Your scheduled trainings and travel days.
       </p>
-
-      {pendingBookings.length > 0 && (
-        <section className="mt-6">
-          <h2 className="text-lg font-medium">Pending bookings</h2>
-          {actionError && (
-            <p className="mt-2 text-sm text-red-600">{actionError}</p>
-          )}
-          <ul className="mt-3 space-y-2">
-            {pendingBookings.map((b) => (
-              <li
-                key={b.id}
-                className="rounded-md border border-brand-darkBlue/10 bg-white shadow-sm p-4"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  {b.project && <ProjectDot color={b.project.color} />}
-                  <span className="text-sm font-medium text-brand-darkBlue">
-                    {b.project?.name ?? "Unknown project"}
-                  </span>
-                  <span className="text-sm text-brand-darkBlue/60">
-                    {formatDateRange(b.startTime, b.endTime)}
-                  </span>
-                  <LocationTag location={b.location} />
-                  <BillableTag billable={b.billable} />
-                </div>
-                <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={() => respond(b.id, "accepted")}
-                    disabled={pendingAction}
-                    className="rounded-md bg-brand-blue px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-darkBlue disabled:opacity-50"
-                  >
-                    Accept
-                  </button>
-                  <button
-                    onClick={() => requestReject(b.id)}
-                    disabled={pendingAction}
-                    className="rounded-md border border-brand-darkBlue/20 px-3 py-1.5 text-sm hover:bg-brand-blueWater disabled:opacity-50"
-                  >
-                    Reject
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <div className="min-w-[280px] flex-1">
@@ -490,8 +364,6 @@ export default function TrainerCalendarPage() {
                 <BookingListItem
                   key={b.id}
                   booking={b}
-                  onAccept={(id) => respond(id, "accepted")}
-                  onRejectRequest={requestReject}
                   onCancellationRequest={requestCancellation}
                   onSelectDay={handleSidebarBookingClick}
                   pendingAction={pendingAction}
@@ -527,15 +399,6 @@ export default function TrainerCalendarPage() {
                   <p className="mt-2 text-sm text-brand-darkBlue/70">
                     “{b.rejectionReason}”
                   </p>
-                )}
-                {isWithinUndoWindow(b.statusChangedAt) && (
-                  <button
-                    onClick={() => respond(b.id, "pending")}
-                    disabled={pendingAction}
-                    className="mt-3 rounded-md border border-brand-darkBlue/20 px-3 py-1.5 text-sm hover:bg-brand-blueWater disabled:opacity-50"
-                  >
-                    Undo
-                  </button>
                 )}
               </li>
             ))}
@@ -645,29 +508,6 @@ export default function TrainerCalendarPage() {
               <p className="mt-3 text-sm text-red-600">{actionError}</p>
             )}
 
-            {selectedBooking.status === "pending" && (
-              <div className="mt-4 flex gap-2">
-                <button
-                  onClick={() => respond(selectedBooking.id, "accepted")}
-                  disabled={pendingAction}
-                  className="rounded-md bg-brand-blue px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-darkBlue disabled:opacity-50"
-                >
-                  Accept
-                </button>
-                <button
-                  onClick={() => {
-                    const id = selectedBooking.id;
-                    setSelectedBooking(null);
-                    requestReject(id);
-                  }}
-                  disabled={pendingAction}
-                  className="rounded-md border border-brand-darkBlue/20 px-3 py-1.5 text-sm hover:bg-brand-blueWater disabled:opacity-50"
-                >
-                  Reject
-                </button>
-              </div>
-            )}
-
             {selectedBooking.status === "accepted" && (
               <div className="mt-4">
                 <button
@@ -687,17 +527,6 @@ export default function TrainerCalendarPage() {
           </div>
         )}
       </Modal>
-
-      <RejectReasonModal
-        open={rejectTargetId !== null}
-        onClose={() => setRejectTargetId(null)}
-        submitting={pendingAction}
-        onConfirm={(reason) => {
-          const id = rejectTargetId;
-          setRejectTargetId(null);
-          if (id) respond(id, "rejected", reason);
-        }}
-      />
 
       <RequestCancellationModal
         open={cancelTargetId !== null}

@@ -35,6 +35,12 @@ export function notificationHref(notification: Notification): string {
   if (notification.type === "expense_submitted") {
     return "/admin/submissions";
   }
+  if (
+    notification.type === "work_order_approved" ||
+    notification.type === "work_order_denied"
+  ) {
+    return "/admin/scheduling";
+  }
   return "/admin/scheduling";
 }
 
