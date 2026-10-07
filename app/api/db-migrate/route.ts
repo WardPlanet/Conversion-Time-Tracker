@@ -46,6 +46,7 @@ async function runMigration() {
       partner_id TEXT
     )
   `;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS partner_id TEXT`;
 
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS partner_id TEXT`;
 
@@ -100,10 +101,14 @@ async function runMigration() {
       status_changed_at TEXT NOT NULL,
       rejection_reason TEXT,
       cancellation_reason TEXT,
-      booking_type TEXT,
+      all_day BOOLEAN NOT NULL DEFAULT false,
+      booking_type TEXT NOT NULL DEFAULT 'training',
       group_id TEXT
     )
   `;
+  await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS all_day BOOLEAN NOT NULL DEFAULT false`;
+  await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_type TEXT NOT NULL DEFAULT 'training'`;
+  await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS group_id TEXT`;
 
   await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_type TEXT`;
   await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS group_id TEXT`;
@@ -276,6 +281,13 @@ async function runMigration() {
 
   // ── Seed data ──────────────────────────────────────────────────────────────
 
+  // Partners
+  await sql`
+    INSERT INTO partners (id, name, contact_email, active) VALUES
+      ('partner-1', 'Apex Training Partners', 'partners@apextraining.com', true)
+    ON CONFLICT (id) DO NOTHING
+  `;
+
   // Users
   const [
     adminHash,
@@ -284,6 +296,7 @@ async function runMigration() {
     ljHash,
     jsmithHash,
     rleeHash,
+    partnerAdminHash,
   ] = await Promise.all([
     hashPassword("admin123"),
     hashPassword("Welcome1!"),
@@ -291,18 +304,23 @@ async function runMigration() {
     hashPassword("Welcome1!"),
     hashPassword("trainer123"),
     hashPassword("trainer123"),
+    hashPassword("Welcome1!"),
   ]);
 
   await sql`
-    INSERT INTO users (id, role, username, password_hash, name, email, active) VALUES
-      ('user-admin',         'admin',   'admin',                          ${adminHash}, 'Admin',              'admin@planetdds.com',               true),
-      ('user-cclark',        'admin',   'carla.clark@planetdds.com',      ${ccHash},   'Carla Clark',         'carla.clark@planetdds.com',         true),
-      ('user-darechavaleta', 'admin',   'denise.arechavaleta@planetdds.com', ${daHash},'Denise Arechavaleta', 'denise.arechavaleta@planetdds.com', true),
-      ('user-ljaquin',       'admin',   'lenore.jaquin@planetdds.com',    ${ljHash},   'Lenore Jaquin',       'lenore.jaquin@planetdds.com',       true),
-      ('user-jsmith',        'trainer', 'jsmith',                         ${jsmithHash},'Jordan Smith',       'jordan.smith@example.com',          true),
-      ('user-rlee',          'trainer', 'rlee',                           ${rleeHash}, 'Riley Lee',           'riley.lee@example.com',             true)
+    INSERT INTO users (id, role, username, password_hash, name, email, active, partner_id) VALUES
+      ('user-admin',         'admin',   'admin',                          ${adminHash}, 'Admin',              'admin@planetdds.com',               true, null),
+      ('user-cclark',        'admin',   'carla.clark@planetdds.com',      ${ccHash},   'Carla Clark',         'carla.clark@planetdds.com',         true, null),
+      ('user-darechavaleta', 'admin',   'denise.arechavaleta@planetdds.com', ${daHash},'Denise Arechavaleta', 'denise.arechavaleta@planetdds.com', true, null),
+      ('user-ljaquin',       'admin',   'lenore.jaquin@planetdds.com',    ${ljHash},   'Lenore Jaquin',       'lenore.jaquin@planetdds.com',       true, null),
+      ('user-jsmith',        'trainer', 'jsmith',                         ${jsmithHash},'Jordan Smith',       'jordan.smith@example.com',          true, 'partner-1'),
+      ('user-rlee',          'trainer', 'rlee',                           ${rleeHash}, 'Riley Lee',           'riley.lee@example.com',             true, 'partner-1'),
+      ('user-partner1-admin','partner_admin', 'partner.admin',            ${partnerAdminHash}, 'Partner Admin', 'admin@apextraining.com',          true, 'partner-1')
     ON CONFLICT (id) DO NOTHING
   `;
+
+  // Backfill partner_id for users seeded by an earlier migration run before partners existed.
+  await sql`UPDATE users SET partner_id = 'partner-1' WHERE id IN ('user-jsmith', 'user-rlee') AND partner_id IS NULL`;
 
   // Projects
   await sql`
