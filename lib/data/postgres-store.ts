@@ -355,6 +355,11 @@ export class PostgresDataStore implements DataStore {
     const result = await sql`SELECT * FROM partners WHERE id = ${id} LIMIT 1`;
     return result.rows.length ? rowToPartner(result.rows[0]) : null;
   }
+  
+  async listPartnerAdmins(): Promise<PublicUser[]> {
+    const result = await sql`SELECT * FROM users WHERE role = 'partner_admin' ORDER BY name`;
+    return result.rows.map((r) => toPublicUser(rowToUser(r)));
+  }
 
   async createPartner(input: CreatePartnerInput, actor: Actor): Promise<Partner> {
     this.requireAdmin(actor, "create partners");
