@@ -48,8 +48,6 @@ import type {
   CreateExpenseInput,
   UpdateExpenseInput,
   CreateUnavailabilityBlockInput,
-  CreatePartnerInput,
-  CreatePartnerAdminInput,
   EnrichedWorkOrder,
   DataStore,
 } from "@/lib/data/store";
