@@ -31,7 +31,6 @@ import type {
 } from "@/lib/types";
 import type {
   Actor,
-  EnrichedWorkOrder,
   CreatePartnerInput,
   CreatePartnerAdminInput,
   CreateTaskInput,
